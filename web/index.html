@@ -5,13 +5,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FireSync · Harmonized Fire Calendar</title>
-  <meta name="description" content="FireSync harmonizes 25 years of NASA FIRMS MODIS and VIIRS active-fire hotspots into one consistent burning activity calendar for any place on Earth.">
+  <meta name="description" content="FireSync harmonizes 25 years of NASA FIRMS MODIS and VIIRS active-fire hotspots into one consistent burning activity calendar for every country, province and state on Earth.">
+  <meta name="theme-color" content="#0e0d0b">
+  <link rel="canonical" href="https://firesync.space/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FireSync">
+  <meta property="og:title" content="FireSync · Harmonized Fire Calendar for every region on Earth">
+  <meta property="og:description" content="25 years of NASA MODIS + VIIRS fire hotspots in one consistent, validated record. Pick any country, province or state and see if this month is abnormal.">
+  <meta property="og:url" content="https://firesync.space/">
+  <meta property="og:image" content="https://firesync.space/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230e0d0b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23e8590c'/%3E%3C/svg%3E">
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 </head>
 <body>
   <div class="intro" id="intro">
@@ -58,46 +70,64 @@
 
   <main class="layout">
     <section class="globe-pane" aria-label="3D globe">
-      <div id="globe"></div>
-      <div class="globe-hud hud-tl">
-        <div class="month-display">
-          <div class="lbl" id="hudArea">World</div>
-          <div class="big" id="hudMonth">—</div>
-          <div class="sub" id="hudValue"></div>
-        </div>
-      </div>
-      <div class="globe-hud hud-tr">
-        <button class="glass hud-btn on" id="btnRotate" data-i18n-title="rotate" title="Auto-rotate" aria-label="Auto-rotate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
-        <button class="glass hud-btn on" id="btnClouds" data-i18n-title="clouds" title="Clouds" aria-label="Clouds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></svg></button>
-        <button class="glass hud-btn" id="btnHome" data-i18n-title="home" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></button>
-        <div class="glass radius-ctl" id="radiusCtl"><span data-i18n="radius">Radius (km)</span>: <b id="radiusVal">150</b><input type="range" id="radiusRange" min="20" max="800" step="10" value="150" aria-label="Radius in km"></div>
-        <div class="glass legend-points">
-          <div class="pl-title" id="ptsTitle">What the columns show</div>
-          <div class="pl-body" id="ptsBody"></div>
-          <div class="ramp"></div>
-          <div class="ends"><span>1</span><span id="ptsMax">—</span></div>
-        </div>
-      </div>
-      <div class="globe-hint" id="globeHint" data-i18n="pickHint">Click anywhere on Earth to build its fire calendar</div>
-      <div class="globe-hud hud-bottom">
-        <div class="glass">
-          <div class="timeline">
-            <button class="play" id="btnPlay" aria-label="Play 25 years"><svg id="icoPlay" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></button>
-            <input type="range" id="timeRange" min="0" max="301" value="301" aria-label="Month">
-            <span class="t-label" id="timeLabel">—</span>
+      <div class="globe-stage">
+        <div id="globe"></div>
+        <div class="globe-hud hud-tl">
+          <div class="month-display">
+            <div class="lbl" id="hudArea">World</div>
+            <div class="big" id="hudMonth">—</div>
+            <div class="sub" id="hudValue"></div>
           </div>
-          <div class="era-strip" id="eraStrip"></div>
-          <div class="era-legend" id="eraLegend"></div>
+        </div>
+        <div class="globe-hud hud-tr">
+          <div class="hud-row">
+            <div class="glass seg hud-seg" role="group" data-i18n-title="pmLabel" title="Click selects" aria-label="Click selects">
+              <button id="pmRegion" class="on" aria-pressed="true" data-i18n="pmRegion">Regions</button><button id="pmCircle" aria-pressed="false" data-i18n="pmCircle">Circle</button>
+            </div>
+            <button class="glass hud-btn on" id="btnFill" aria-pressed="true" data-i18n-title="fillTitle" title="Fill regions by monthly activity" aria-label="Fill regions by monthly activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h7v6H4zM13 5h7v9h-7zM4 13h7v6H4zM13 16h7v3h-7z"/></svg></button>
+          </div>
+          <div class="hud-row">
+            <button class="glass hud-btn on" id="btnRotate" data-i18n-title="rotate" title="Auto-rotate" aria-label="Auto-rotate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+            <button class="glass hud-btn on" id="btnClouds" data-i18n-title="clouds" title="Clouds" aria-label="Clouds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></svg></button>
+            <button class="glass hud-btn" id="btnHome" data-i18n-title="home" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></button>
+          </div>
+          <div class="glass radius-ctl" id="radiusCtl"><span data-i18n="radius">Radius (km)</span>: <b id="radiusVal">150</b><input type="range" id="radiusRange" min="20" max="800" step="10" value="150" aria-label="Radius in km"></div>
+        </div>
+        <div class="globe-hint" id="globeHint" data-i18n="pickHint">Click a country, then a province or state, to build its fire calendar</div>
+      </div>
+      <!-- Dock below the globe: the timeline and the column legend never cover the Earth. -->
+      <div class="globe-dock">
+        <div class="timeline">
+          <button class="play" id="btnPlay" aria-label="Play 25 years"><svg id="icoPlay" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></button>
+          <input type="range" id="timeRange" min="0" max="301" value="301" aria-label="Month">
+          <span class="t-label" id="timeLabel">—</span>
+        </div>
+        <div class="dock-row">
+          <div class="dock-eras">
+            <div class="era-strip" id="eraStrip"></div>
+            <div class="era-legend" id="eraLegend"></div>
+          </div>
+          <div class="legend-points" role="note">
+            <div class="pl-head"><span class="pl-title" id="ptsTitle">What the columns show</span><span class="pl-ramp"><span>1</span><i class="ramp"></i><span id="ptsMax">—</span></span></div>
+            <div class="pl-body" id="ptsBody"></div>
+            <div class="pl-fill" id="fillKey" hidden></div>
+          </div>
         </div>
       </div>
     </section>
 
     <section class="panel">
       <div class="card reveal" id="overview">
+        <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
         <div class="aoi-head">
           <div class="kicker" id="aoiKicker">Global record</div>
           <h2 id="aoiName">World</h2>
           <div class="meta" id="aoiMeta"></div>
+        </div>
+        <div class="filters" role="group" data-i18n-title="filters" aria-label="Filter by region">
+          <label class="f"><span data-i18n="fCountry">Country</span><select id="selCountry"></select></label>
+          <label class="f" id="fRegionWrap" hidden><span id="fRegionLbl" data-i18n="fRegion">Province / state</span><select id="selRegion"></select></label>
+          <label class="f" id="fAdm2Wrap" hidden><span id="fAdm2Lbl" data-i18n="fAdm2">Department / county</span><select id="selAdm2"></select></label>
         </div>
         <p class="insight" id="insight" aria-live="polite"></p>
         <div class="kpis">
@@ -108,6 +138,11 @@
           <div class="kpi"><div class="k" data-i18n="kBurn">Burned area (ha)</div><div class="v" id="kpiBurn">—</div><div class="s" id="kpiBurnSub"></div></div>
         </div>
         <div class="chips" id="presetChips"></div>
+        <div class="ranking" id="ranking" hidden>
+          <div class="rank-head"><h3 id="rankTitle"></h3><p id="rankSub"></p></div>
+          <div class="rank-list" id="rankList" role="list"></div>
+          <button type="button" class="btn ghost rank-more" id="rankMore" hidden></button>
+        </div>
       </div>
 
       <div class="card reveal" id="calendarSec">
@@ -122,6 +157,7 @@
           <div class="seg" role="group" aria-label="Color mode"><button id="mCounts" class="on" data-i18n="counts">Hotspots</button><button id="mAnom" data-i18n="anomaly">Anomaly vs median</button></div>
           <div class="seg" role="group" aria-label="Series"><button id="vHarm" class="on" data-i18n="harmonized">Harmonized</button><button id="vNaive" data-i18n="naive">Naive splice</button></div>
           <select id="baseSel" class="btn" aria-label="Baseline"><option value="viirs" data-i18n="baseViirs">2012–2025 · VIIRS observed</option><option value="full" data-i18n="baseFull">2003–2025 · full record</option></select>
+          <span class="yr-range"><label for="yFrom" data-i18n="yFrom">From</label><select id="yFrom" class="btn"></select><label for="yTo" data-i18n="yTo">to</label><select id="yTo" class="btn"></select></span>
         </div>
         <div class="legend" id="legend"></div>
         <div class="cal-scroll"><div id="calendar"></div></div>
@@ -165,7 +201,7 @@
             <li><b>Blind validation.</b> Factors fitted on 2012–2017 predict 2018–2021 from Aqua alone. The errors are published above, next to those of a single global factor.</li>
             <li><b>Anomalies.</b> Each month is compared with the median of the same calendar month over a baseline (default 2012–2025, observed VIIRS only), excluding the year being evaluated, and ranked among all years.</li>
           </ol>
-          <p>Aggregation: every FIRMS detection since November 2000 (48 yearly global archives plus the 2026 API record) is binned to a 0.25° grid by country, month, satellite and day/night. Country calendars are exact sums. Custom areas sum the 0.25° cells whose centre falls inside the circle.</p>
+          <p>Aggregation: every FIRMS detection since November 2000 (48 yearly global archives plus the 2026 API record) is binned to a 0.25° grid by country, month, satellite and day/night. Country calendars are exact sums. Each of the 4,596 provinces and states on Earth (Natural Earth admin-1) sums the 0.25° cells whose centre falls inside it; coastal cells whose centre lies offshore join the nearest province, so 98.9% of all burning cells belong to one. The 49,038 departments, counties and districts (geoBoundaries) are nested in their province and built the same way; custom circles sum the cells whose centre falls inside the circle.</p>
         </div>
         <div data-lang="es" hidden>
           <p>MODIS (Terra desde 2000, Aqua desde 2002) tiene el registro largo de fuego pero se está retirando. VIIRS (Suomi NPP 2012–2026, NOAA-20 desde 2018, NOAA-21 desde 2024) ve entre 4 y 6 veces más focos de día y muchísimos más de noche, gracias a sus píxeles de 375 m. Pegar los dos registros crudos inventa una explosión de fuego en 2012. FireSync arma un único registro en <b>focos equivalentes VIIRS</b>:</p>
@@ -177,9 +213,9 @@
             <li><b>Validación ciega.</b> Factores ajustados en 2012–2017 predicen 2018–2021 solo con Aqua. Los errores se publican arriba, junto a los de un factor global único.</li>
             <li><b>Anomalías.</b> Cada mes se compara con la mediana del mismo mes calendario en un período base (por defecto 2012–2025, solo VIIRS observado), sin contar el año evaluado, y se ubica en el ranking de todos los años.</li>
           </ol>
-          <p>Agregación: cada detección de FIRMS desde noviembre de 2000 (48 archivos globales anuales más el registro 2026 de la API) se agrupa en una grilla de 0,25° por país, mes, satélite y día/noche. Los calendarios por país son sumas exactas. Las zonas propias suman las celdas de 0,25° cuyo centro cae dentro del círculo.</p>
+          <p>Agregación: cada detección de FIRMS desde noviembre de 2000 (48 archivos globales anuales más el registro 2026 de la API) se agrupa en una grilla de 0,25° por país, mes, satélite y día/noche. Los calendarios por país son sumas exactas. Cada una de las 4.596 provincias y estados del planeta (Natural Earth admin-1) suma las celdas de 0,25° cuyo centro cae dentro; las celdas costeras con centro en el mar se asignan a la provincia más cercana, así el 98,9 % de las celdas con fuego pertenece a alguna. Los 49.038 departamentos, partidos y distritos (geoBoundaries) se anidan en su provincia y se arman igual; los círculos propios suman las celdas cuyo centro cae dentro del círculo.</p>
         </div>
-        <p class="sources"><b>Sources.</b> NASA FIRMS country archives (MODIS MCD14ML Collection 6.1/6.2; VIIRS 375 m VNP14IMG and VJ114IMG V002) and the FIRMS area API for 2026 (standard and near-real-time products), firms.modaps.eosdis.nasa.gov. Burned area: MODIS MCD64A1 Collection 6.1 (NASA LP DAAC), accessed through Microsoft Planetary Computer. Place names and boundaries: © OpenStreetMap contributors (Nominatim). NASA Blue Marble imagery via the three-globe examples. Libraries: three.js, globe.gl, Apache ECharts. We acknowledge the use of data and imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Earth Science Data and Information System (ESDIS).</p>
+        <p class="sources"><b>Sources.</b> NASA FIRMS country archives (MODIS MCD14ML Collection 6.1/6.2; VIIRS 375 m VNP14IMG and VJ114IMG V002) and the FIRMS area API for 2026 (standard and near-real-time products), firms.modaps.eosdis.nasa.gov. Burned area: MODIS MCD64A1 Collection 6.1 (NASA LP DAAC), accessed through Microsoft Planetary Computer. Country, province and state borders: Natural Earth 1:10m admin-1 and 1:50m admin-0 (public domain). Departments, counties and districts: geoBoundaries gbOpen ADM2 (Runfola et al. 2020; 49,038 units in about 180 countries, licence per country, shown with each unit). Town search: © OpenStreetMap contributors (Nominatim). NASA Blue Marble imagery via the three-globe examples. Libraries: three.js, globe.gl, Apache ECharts. We acknowledge the use of data and imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Earth Science Data and Information System (ESDIS).</p>
         <div class="banner" id="banner"></div>
       </div>
       <footer data-i18n="footer"></footer>

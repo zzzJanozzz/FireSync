@@ -6,14 +6,14 @@
 FireSync: the continuity engine for Earth's fire record
 
 ## Final project link
-- App: https://zzzjanozzz.github.io/FireSync/
+- App: https://firesync.space (mirror: https://zzzjanozzz.github.io/FireSync/)
 - Code and method: https://github.com/zzzJanozzz/FireSync
 
 ## High-level summary (≈ 150 words)
-NASA's MODIS has recorded Earth's fires since 2000 and is now retiring. Its successor, VIIRS, sees fires differently: smaller pixels and better night sensitivity mean 4–6 times more hotspots by day and far more at night. Gluing the two raw records together fakes a fire explosion in 2012, and fire managers lose a consistent 25-year history exactly when they need it most. FireSync processes all 556 million NASA FIRMS detections since November 2000 (plus the 2026 record through the FIRMS API). It harmonizes them with a stratified, validated calibration into one record of *VIIRS-equivalent hotspots*, and turns it into a burning activity calendar for any place on Earth. In a blind hindcast it cuts the error of the usual single-factor approach by 36%. Users pick a country or click anywhere on a 3D globe, see which months and years burned most, compare the current month with the historical median, and download the data.
+NASA's MODIS has recorded Earth's fires since 2000 and is now retiring. Its successor, VIIRS, sees fires differently: smaller pixels and better night sensitivity mean 4–6 times more hotspots by day and far more at night. Gluing the two raw records together fakes a fire explosion in 2012, and fire managers lose a consistent 25-year history exactly when they need it most. FireSync processes all 556 million NASA FIRMS detections since November 2000 (plus the 2026 record through the FIRMS API). It harmonizes them with a stratified, validated calibration into one record of *VIIRS-equivalent hotspots*, and turns it into a burning activity calendar for every country, all 4,596 provinces and states on Earth, their 49,038 departments or counties, or any circle on the map. In a blind hindcast it cuts the error of the usual single-factor approach by 36%. Users drill down on a 3D globe from the world to a country, a province and a department, see which months and years burned most and which regions burn most right now, compare the current month with the historical median, and download the data.
 
 ## Project details
-**What it does.** FireSync answers questions a fire manager asks every season. Is this month unusual for my area? Which months and years had the most fire? How does the current fire compare with past ones? The burning activity calendar (year × month) uses an accessible color ramp. Its anomaly mode compares each month with the median of the same month, and every reconstructed value is marked as such and comes with its likely range. A 3D globe shows the hotspots of any month and plays 25 years of global fire as a time-lapse.
+**What it does.** FireSync answers questions a fire manager asks every season. Is this month unusual for my area? Which months and years had the most fire? How does the current fire compare with past ones? The burning activity calendar (year × month) uses an accessible color ramp. Its anomaly mode compares each month with the median of the same month, and every reconstructed value is marked as such and comes with its likely range. A 3D globe shows the hotspots of any month and plays 25 years of global fire as a time-lapse. The globe is regionalized: country borders, then every province or state of the chosen country (colored by that month's activity), then its departments or counties. A ranking answers "where is it burning this month?" at each level, with each region compared with its own median.
 
 **How it works.**
 1. Common filters across sensors: vegetation fires only (FIRMS `type = 0`, plus a static-source mask for near-real-time data), MODIS confidence ≥ 30, VIIRS nominal/high.
@@ -33,7 +33,7 @@ NOAA-20 and Suomi NPP agree within 2% (factors 1.00 by day and 0.98 at night), s
 
 **Benefits.** Early-warning teams, emergency managers, scientists and land managers keep a consistent fire history as MODIS ends. The method recalibrates the same way when NOAA-21 or the next JPSS satellite joins.
 
-**Tools.** C# (aggregation of 45 GB of CSV in about 2 minutes), JavaScript, three.js and globe.gl (globe), Apache ECharts (charts). Static hosting.
+**Tools.** C# (aggregation of 45 GB of CSV in about 2 minutes), Node.js (region builder), JavaScript, three.js and globe.gl (globe), Apache ECharts (charts). Boundaries: Natural Earth (public domain) and geoBoundaries (open licences). Static hosting on Cloudflare Pages.
 
 **Creativity.** We treat the problem as a *continuity system*, not a single conversion factor. The app is honest about provenance and uncertainty, and it publishes its own validation and a MODIS shutdown simulator.
 
@@ -41,7 +41,7 @@ NOAA-20 and Suomi NPP agree within 2% (factors 1.00 by day and 0.98 at night), s
 NASA FIRMS active fire data (MODIS Collection 6.1/6.2 MCD14ML/MCD14DL; VIIRS 375 m VNP14IMG and VJ114IMG, V002), the FIRMS area API (standard and NRT products for 2026) and NASA Blue Marble imagery. FIRMS data is the core of the project: every number in the app comes from it.
 
 ## Space agency partner data
-The challenge was authored by CONAE (Argentina). Our demo case is the Guanchín fire in Chilecito, La Rioja (27 Jul–4 Aug 2026), which the challenge video features. Within 40 km of Chilecito, FireSync finds 243 VIIRS-equivalent hotspots in July 2026: +3,140% over the 2012–2025 July median of 8, and the highest July in 26 years. The MODIS burned-area product (MCD64A1, via Microsoft Planetary Computer) maps about 11,790 ha burned that month, consistent with the 10,000–15,000 ha preliminary estimates reported in the press. ⟨Add any CONAE resource used.⟩
+The challenge was authored by CONAE (Argentina). Our demo case is the Guanchín fire in Chilecito, La Rioja (27 Jul–4 Aug 2026), which the challenge video features. Within 40 km of Chilecito, FireSync finds 243 VIIRS-equivalent hotspots in July 2026: +3,140% over the 2012–2025 July median of 8, and the highest July in 26 years. The MODIS burned-area product (MCD64A1, via Microsoft Planetary Computer) maps about 11,790 ha burned that month, consistent with the 10,000–15,000 ha preliminary estimates reported in the press. At province level, La Rioja logs 296 VIIRS-equivalent hotspots in July 2026 (+406% vs its July median of 59, the 3rd highest July in 26 years) and about 12,350 ha burned. ⟨Add any CONAE resource used.⟩
 
 ## References
 - NASA FIRMS. https://firms.modaps.eosdis.nasa.gov. *We acknowledge the use of data and imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's ESDIS.*
@@ -49,6 +49,8 @@ The challenge was authored by CONAE (Argentina). Our demo case is the Guanchín 
 - Schroeder, W., Oliva, P., Giglio, L., Csiszar, I. A. (2014). The New VIIRS 375 m active fire detection data product. *Remote Sensing of Environment* 143, 85–96.
 - Chen, Y. et al. (2023). Multi-decadal trends and variability in burned area from the fifth version of the Global Fire Emissions Database (GFED5). *Earth System Science Data* 15, 5227–5259.
 - INPE Programa Queimadas (reference-satellite approach). https://terrabrasilis.dpi.inpe.br/queimadas
+- Natural Earth 1:10m admin-1 and 1:50m admin-0 boundaries (public domain). https://www.naturalearthdata.com
+- Runfola, D. et al. (2020). geoBoundaries: A global database of political administrative boundaries. *PLoS ONE* 15(4): e0231866. https://www.geoboundaries.org
 - Libraries: three.js (MIT), globe.gl and three-globe (MIT), Apache ECharts (Apache-2.0). Fonts: Source Serif 4, IBM Plex (SIL OFL).
 - ⟨Add the GMD 2026 and Zheng et al. 2026 papers from `reports/` if cited.⟩
 

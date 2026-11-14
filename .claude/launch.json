@@ -3,9 +3,15 @@
   "configurations": [
     {
       "name": "firesync-web",
-      "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/serve.ps1", "-Port", "8080"],
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8080", "--bind", "127.0.0.1", "--directory", "web"],
       "port": 8080
+    },
+    {
+      "name": "firesync-web-ps",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/serve.ps1", "-Port", "8081"],
+      "port": 8081
     }
   ]
 }

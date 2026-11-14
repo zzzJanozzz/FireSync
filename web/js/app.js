@@ -11,16 +11,23 @@ const state = {
   lang: 'en', aoi: { kind: 'world', id: 'world', name: 'World' }, series: null, t: null,
   mode: 'counts', view: 'harmonized', baseline: 'viirs', radiusKm: 150, playing: false, userRotate: true,
   meta: null, countries: [], validation: null, medians: null, places: [],
+  // Regionalization: click mode, choropleth fill, borders, the open country's provinces / states and their subdivisions.
+  pickMode: 'region', fill: true, world: null, countriesH: null, regions: null, adm2: null, regionIndex: null,
+  a3ByFid: new Map(), fidByA3: new Map(), nameEs: new Map(), rankAll: false,
+  yFrom: 2000, yTo: null, // year range shown in the calendar and exported (null = latest year)
 };
 const L = () => I18N[state.lang];
 let globeApi = null, calendar = null, charts = null;
 
 const PRESETS = [
   { label: 'Chilecito · AR', name: 'Chilecito, La Rioja (Argentina)', lat: -29.18, lon: -67.64, r: 40, t: U.tOf(2026, 6) },
-  { label: 'La Rioja · AR', place: 'Provincia de La Rioja, Argentina', t: U.tOf(2026, 6) },
-  { label: 'Córdoba · AR', place: 'Provincia de Córdoba, Argentina', t: U.tOf(2020, 8) },
-  { label: 'Rondônia · BR', place: 'Rondônia, Brasil', t: U.tOf(2019, 7) },
-  { label: 'California · US', place: 'California, United States', t: U.tOf(2020, 7) },
+  { label: 'La Rioja · AR', region: ['ARG', 'La Rioja'], t: U.tOf(2026, 6) },
+  { label: 'Córdoba · AR', region: ['ARG', 'Córdoba'], t: U.tOf(2020, 8) },
+  { label: 'Rondônia · BR', region: ['BRA', 'Rondônia'], t: U.tOf(2019, 7) },
+  { label: 'California · US', region: ['USA', 'California'], t: U.tOf(2020, 7) },
+  { label: 'New South Wales · AU', region: ['AUS', 'New South Wales'], t: U.tOf(2019, 11) },
+  { label: 'Sakha · RU', region: ['RUS', 'Sakha (Yakutia)'], t: U.tOf(2021, 6) },
+  { label: 'Kalimantan Tengah · ID', region: ['IDN', 'Kalimantan Tengah'], t: U.tOf(2015, 8) },
   { label: 'Australia', country: 'Australia', t: U.tOf(2019, 11) },
   { label: 'Canada', country: 'Canada', t: U.tOf(2023, 5) },
 ];
@@ -32,17 +39,20 @@ async function boot() {
   readHash();
   applyLang();
   step(15, L().loading);
-  const [meta, countries, validation] = await Promise.all([D.getMeta(), D.getCountries(), D.getValidation()]);
+  const [meta, countries, validation, world] = await Promise.all([D.getMeta(), D.getCountries(), D.getValidation(), D.getWorldBorders().catch(() => null)]);
   state.meta = meta; state.countries = countries.sort((a, b) => b.total - a.total); state.validation = validation;
+  initWorld(world);
+  D.getCountriesH().then(h => { state.countriesH = h; refreshRegions(); renderRanking(); }).catch(() => {});
   step(45, L().loadingGlobe);
-  globeApi = createGlobe($('globe'), { onPick: (lat, lng) => { if (!state.playing) pickCircle(lat, lng, state.radiusKm); } });
+  globeApi = createGlobe($('globe'), { onPick: onOceanClick, onRegion: onRegionClick });
   calendar = new Calendar($('calendar'), { onSelect: t => selectMonth(t), onHover: showTip });
   charts = createCharts({ seasonal: $('chSeasonal'), annual: $('chAnnual'), scatter: $('chScatter'), drift: $('chDrift') });
   setupUI();
   step(70, L().loading);
   const h = state.pendingHash;
   try {
-    if (h && h.p) await pickCircle(h.p[0], h.p[1], h.p[2], { t: h.t });
+    if (h && h.r) await pickRegion(h.r[0], h.r[1], { t: h.t });
+    else if (h && h.p) await pickCircle(h.p[0], h.p[1], h.p[2], { t: h.t });
     else if (h && h.c != null && countries.find(c => String(c.id) === String(h.c))) await pickCountry(countries.find(c => String(c.id) === String(h.c)), { t: h.t });
     else await pickWorld({ t: h && h.t });
   } catch (e) { console.error(e); await pickWorld({}); }
@@ -57,14 +67,165 @@ async function boot() {
 // ------------------------------------------------------------ areas of interest
 function beginAOI() { if (state.playing) stop(); }
 
+// ------------------------------------------------------------ regions (borders, provinces / states, subdivisions)
+const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function initWorld(world) {
+  if (!world) return;
+  state.world = world;
+  state.worldFeats = world.features.map(f => ({ kind: 'country', id: `c:${f.properties.a3}`, a3: f.properties.a3, fid: f.properties.fid, name: f.properties.name, name_es: f.properties.name_es, adm1: f.properties.adm1, geometry: f.geometry }));
+  for (const f of state.worldFeats) {
+    if (f.fid == null) continue;
+    if (!state.a3ByFid.has(f.fid) || f.adm1 > 1) state.a3ByFid.set(f.fid, f.a3);
+    if (!state.fidByA3.has(f.a3)) state.fidByA3.set(f.a3, f.fid);
+    if (f.name_es) state.nameEs.set(f.fid, f.name_es);
+  }
+}
+const cName = c => (c ? (state.lang === 'es' && state.nameEs.get(c.id)) || c.name : '');
+const countryByFid = fid => state.countries.find(c => c.id === fid);
+const uName = u => (state.lang === 'es' ? u.name_es || u.name : u.name_en || u.name);
+const uType = u => (state.lang === 'es' ? (L().typeEs[u.type_en] || u.type || u.type_en) : u.type_en || u.type) || L().fRegion;
+const worldFeatOf = a3 => state.worldFeats && state.worldFeats.find(f => f.a3 === a3);
+// Name of the third level as geoBoundaries calls it in that country ("departments", "counties"...), localized.
+// [plural EN, singular EN, plural ES, singular ES], keyed by geoBoundaries' "canonical" name (singular or plural).
+const ADM2_ROWS = [
+  [['department', 'departments'], ['Departments', 'Department', 'Departamentos', 'Departamento']],
+  [['county', 'counties', 'county level', 'counties and unitary authorities', 'county, city, special city'], ['Counties', 'County', 'Condados', 'Condado']],
+  [['district', 'districts', 'government district', 'district municipality', 'subdistrict', 'districts (aqdya)'], ['Districts', 'District', 'Distritos', 'Distrito']],
+  [['municipality', 'municipalities', 'municipio', 'municipios', 'municipalities and towns', 'kommune', 'opštini'], ['Municipalities', 'Municipality', 'Municipios', 'Municipio']],
+  [['province', 'provinces'], ['Provinces', 'Province', 'Provincias', 'Provincia']],
+  [['commune', 'communes', 'municipal communities'], ['Communes', 'Commune', 'Comunas', 'Comuna']],
+  [['raion', 'raions', 'okres', 'tuman'], ['Districts', 'District', 'Distritos', 'Distrito']],
+  [['prefecture', 'prefectures'], ['Prefectures', 'Prefecture', 'Prefecturas', 'Prefectura']],
+  [['sub-prefectures', 'subprefectures'], ['Sub-prefectures', 'Sub-prefecture', 'Subprefecturas', 'Subprefectura']],
+  [['canton', 'cantons'], ['Cantons', 'Canton', 'Cantones', 'Cantón']],
+  [['governorate'], ['Governorates', 'Governorate', 'Gobernaciones', 'Gobernación']],
+  [['divisions'], ['Divisions', 'Division', 'Divisiones', 'División']],
+  [['constituency', 'constituencies'], ['Constituencies', 'Constituency', 'Circunscripciones', 'Circunscripción']],
+  [['regions'], ['Regions', 'Region', 'Regiones', 'Región']],
+  [['townships'], ['Townships', 'Township', 'Municipios', 'Municipio']],
+  [['local government areas', 'territorial authorities'], ['Local government areas', 'Local government area', 'Áreas de gobierno local', 'Área de gobierno local']],
+  [['community', 'communities'], ['Communities', 'Community', 'Comunidades', 'Comunidad']],
+  [['parishes', 'freguesia'], ['Parishes', 'Parish', 'Parroquias', 'Parroquia']],
+  [['regency, city'], ['Regencies and cities', 'Regency / city', 'Regencias y ciudades', 'Regencia / ciudad']],
+];
+const ADM2_NAMES = Object.fromEntries(ADM2_ROWS.flatMap(([keys, row]) => keys.map(k => [k, row])));
+function adm2Kind(singular) {
+  const c = state.adm2 && state.adm2.canonical ? String(state.adm2.canonical).toLowerCase().trim() : '';
+  const row = ADM2_NAMES[c];
+  if (!row) return L().fAdm2;
+  return row[(state.lang === 'es' ? 2 : 0) + (singular ? 1 : 0)];
+}
+
+// The polygons drawn on the globe for the current level, plus their choropleth fill.
+function refreshRegions() {
+  if (!globeApi || !state.worldFeats) return;
+  const a = state.aoi, feats = [];
+  const a3 = a.kind === 'country' || a.kind === 'region' || a.kind === 'sub' ? a.a3 : null;
+  const deep = a3 && state.regions && state.regions.a3 === a3;
+  for (const f of state.worldFeats) {
+    if (deep && f.a3 === a3) continue;
+    if (a.kind === 'world') feats.push(f);
+    else feats.push(f.ctx || (f.ctx = { ...f, kind: 'context' }));
+  }
+  if (deep) {
+    const file = state.regions;
+    if (!file.feats) file.feats = file.geo.features.map(g => ({ kind: 'unit', id: g.properties.id, unit: file.units.find(u => u.id === g.properties.id), geometry: g.geometry }));
+    feats.push(...file.feats);
+    if ((a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid) {
+      if (!state.adm2.feats) state.adm2.feats = state.adm2.features.map(s => ({ kind: 'sub', id: `s:${s.id}`, sub: s, geometry: s.geom }));
+      feats.push(...state.adm2.feats);
+    }
+  }
+  globeApi.setRegions(feats);
+  restyleRegions();
+}
+
+// Stable log scale per level (p99 over every unit-month) so the time-lapse shows real change.
+function scaleOf(obj) {
+  if (obj.__p99) return obj.__p99;
+  const vals = [];
+  for (const arr of Object.values(obj.H)) for (const v of arr) if (v > 0) vals.push(v);
+  vals.sort((x, y) => x - y);
+  obj.__p99 = Math.max(5, vals.length ? vals[Math.floor(vals.length * 0.99)] : 5);
+  return obj.__p99;
+}
+function fillColor(v, vmax) {
+  if (!(v > 0)) return 'rgba(255,255,255,0.025)';
+  const x = Math.min(1, Math.log10(1 + v) / Math.log10(1 + vmax));
+  return U.inferno(0.1 + 0.9 * x).replace('rgb(', 'rgba(').replace(')', ',0.52)');
+}
+function seriesStats(arr, t) {
+  if (!arr) return null;
+  const m = U.monthOf(t), y = U.yearOf(t), [b0, b1] = baselineYears(), base = [];
+  for (let yy = b0; yy <= b1; yy++) { if (yy === y) continue; const tt = U.tOf(yy, m); if (tt >= 0 && tt < arr.length) base.push(arr[tt]); }
+  const v = arr[t] || 0, med = U.median(base);
+  return { v, med, anom: med > 0 ? v / med - 1 : v > 0 ? Infinity : 0 };
+}
+const featSeries = f => {
+  if (f.kind === 'unit') return state.regions && state.regions.H[f.id];
+  if (f.kind === 'sub') return state.adm2 && state.adm2.H && state.adm2.H[f.sub.id];
+  if ((f.kind === 'country' || f.kind === 'context') && state.countriesH && f.fid != null) return state.countriesH.H[f.fid];
+  return null;
+};
+function restyleRegions() {
+  if (!globeApi) return;
+  const a = state.aoi, t = state.t ?? 0, l = L();
+  const unitMax = state.regions ? scaleOf(state.regions) : 1;
+  const ctyMax = state.countriesH ? scaleOf(state.countriesH) : 1;
+  const subMax = state.adm2 && state.adm2.H ? scaleOf(state.adm2) : 1;
+  const selected = a.kind === 'region' ? a.uid : a.kind === 'sub' ? `s:${a.sid}` : null;
+  globeApi.styleRegions({
+    selected,
+    fill: !state.fill ? null : f => {
+      if (f.kind === 'context') return null;
+      if (f.kind === 'unit' && a.kind === 'sub') return null;
+      const arr = featSeries(f);
+      if (!arr) return null;
+      return fillColor(arr[t], f.kind === 'unit' ? unitMax : f.kind === 'sub' ? subMax : ctyMax);
+    },
+    label: f => {
+      const mo = `${l.months[U.monthOf(t)]} ${U.yearOf(t)}`;
+      let title, kind;
+      if (f.kind === 'unit') { title = uName(f.unit); kind = uType(f.unit); }
+      else if (f.kind === 'sub') { title = f.sub.name; kind = adm2Kind(true); }
+      else { title = state.lang === 'es' ? f.name_es || f.name : f.name; kind = l.country; }
+      const st = seriesStats(featSeries(f), t);
+      const val = st ? `<div class="gt-r"><span>${mo}</span><b>${U.fmt(st.v, state.lang)}</b></div><div class="gt-r"><span>${l.tipAnom}</span><b>${isFinite(st.anom) ? U.pct(st.anom, state.lang) : '—'}</b></div>` : '';
+      const hint = state.pickMode === 'circle' ? l.tipCircle : f.kind === 'sub' ? l.tipOpen : f.kind === 'unit' ? l.tipOpen : l.tipDrill;
+      return `<div class="gtip"><div class="gt-k">${kind}</div><div class="gt-t">${title}</div>${val}<div class="gt-h">${hint}</div></div>`;
+    },
+  });
+}
+
+function onOceanClick(lat, lng) {
+  if (state.playing) return;
+  if (state.pickMode === 'circle') pickCircle(lat, lng, state.radiusKm);
+  else toast(L().oceanHint);
+}
+function onRegionClick(f, { lat, lng }) {
+  if (state.playing || !f) return;
+  if (state.pickMode === 'circle') { if (lat != null) pickCircle(lat, lng, state.radiusKm); return; }
+  if (f.kind === 'unit') return pickRegion(state.regions.a3, f.id, { t: state.t });
+  if (f.kind === 'sub') return pickSub(f.sub, { t: state.t });
+  const c = f.fid != null ? countryByFid(f.fid) : null;
+  if (c) return pickCountry(c, { t: state.t });
+  return pickPlace({ name: f.name, full: f.name, type: 'country', lat, lon: lng, geom: f.geometry }, { t: state.t });
+}
+
+async function loadRegions(a3) {
+  try { const file = await D.getRegions(a3); return file; } catch (e) { console.warn(e); return null; }
+}
+
 async function pickWorld({ t } = {}) {
   beginAOI();
   state.aoi = { kind: 'world', id: 'world', name: L().world };
+  state.adm2 = null;
   const s = await D.countrySeries('world');
   globeApi.releaseAnchor();
   globeApi.setOutline([]);
   globeApi.clearFocus();
-  $('radiusCtl').classList.remove('on');
+  $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
+  refreshRegions();
   await setSeries(s, t);
   globeApi.flyTo(-8, -45, 2.6, 1800);
   globeApi.setAutoRotate(state.userRotate);
@@ -73,22 +234,96 @@ async function pickWorld({ t } = {}) {
 
 async function pickCountry(c, { t } = {}) {
   beginAOI();
-  state.aoi = { kind: 'country', id: c.id, name: c.name, lat: c.lat, lon: c.lon, bbox: c.bbox, geom: null };
-  const s = await D.countrySeries(c.id);
+  const a3 = state.a3ByFid.get(c.id) || null;
+  const wf = a3 && worldFeatOf(a3);
+  state.aoi = { kind: 'country', id: c.id, name: cName(c), a3, lat: c.lat, lon: c.lon, bbox: c.bbox, geom: wf ? wf.geometry : null, areaHa: wf ? D.geomAreaHa(wf.geometry) : null };
+  state.adm2 = null;
+  const a = state.aoi;
+  const [s, file] = await Promise.all([D.countrySeries(c.id), a3 ? loadRegions(a3) : null]);
+  if (state.aoi !== a) return;
+  if (file) state.regions = file;
   globeApi.hideContext();
-  globeApi.setOutline([]);
-  $('radiusCtl').classList.remove('on');
+  globeApi.setOutline(a.geom ? D.outlineRings(a.geom) : []);
+  $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
   const span = Math.max(c.bbox[2] - c.bbox[0], c.bbox[3] - c.bbox[1]);
   globeApi.anchorTo(c.lat, c.lon, Math.max(0.95, Math.min(2.4, span / 22)), 1800);
   $('btnRotate').classList.remove('on');
+  refreshRegions();
   await setSeries(s, t);
-  // Real border from OpenStreetMap (outline and burned-area statistics). Fails gracefully.
+  if (a.geom) return;
+  // No Natural Earth polygon for this FIRMS unit: real border from OpenStreetMap. Fails gracefully.
   D.countryBoundary(c.name).then(g => {
-    if (state.aoi.kind !== 'country' || state.aoi.id !== c.id || !g) return;
-    state.aoi.geom = g; state.aoi.areaHa = D.geomAreaHa(g);
+    if (state.aoi !== a || !g) return;
+    a.geom = g; a.areaHa = D.geomAreaHa(g);
     globeApi.setOutline(D.outlineRings(g));
     updateBurned();
   });
+}
+
+// One province / state (Natural Earth admin-1) of any country.
+async function pickRegion(a3, uid, { t } = {}) {
+  beginAOI();
+  const file = await loadRegions(a3);
+  const u = file && file.units.find(x => x.id === uid);
+  if (!u) { toast(L().regionErr); return; }
+  state.regions = file;
+  const fid = file.fid != null ? file.fid : state.fidByA3.get(a3);
+  const country = fid != null ? countryByFid(fid) : null;
+  const s = await D.unitSeries(file, uid);
+  if (!s.cells.length) {
+    // Smaller than one 0.25-degree cell: fall back to a circle of the same area around its centre.
+    return pickCircle(u.lat, u.lon, Math.max(12, Math.round(Math.sqrt(u.km2 / Math.PI))), { t, label: uName(u) });
+  }
+  state.aoi = { kind: 'region', a3, uid, unit: u, country, name: uName(u), type: uType(u), lat: u.lat, lon: u.lon, geom: s.geom, areaHa: s.areaHa, id: `ne:${uid}` };
+  if (!state.adm2 || state.adm2.uid !== uid) state.adm2 = null;
+  const a = state.aoi;
+  globeApi.hideContext();
+  globeApi.setOutline(s.geom ? D.outlineRings(s.geom) : []);
+  $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
+  const [w, so, e, n] = u.bbox;
+  globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.16, Math.min(2.2, Math.max(e - w, n - so) / 15)), 1700);
+  $('btnRotate').classList.remove('on');
+  refreshRegions();
+  await setSeries(s, t);
+  loadAdm2(a);
+}
+
+// Third level: departments / counties / districts inside the selected province (geoBoundaries, on demand).
+function loadAdm2(a) {
+  if (state.adm2 && state.adm2.uid === a.uid) { syncFilters(); return; }
+  $('fAdm2Wrap').hidden = false;
+  $('selAdm2').innerHTML = `<option value="">${L().adm2Loading}</option>`;
+  $('selAdm2').disabled = true;
+  D.getAdm2(a.uid).then(file => {
+    const features = file.units.map(u => ({ id: u.id, name: u.name, unit: u, geom: (file.geo.features.find(f => f.properties.id === u.id) || {}).geometry })).filter(f => f.geom);
+    return { ...file, features };
+  }).catch(() => null).then(sub => {
+    if (state.aoi !== a && !(state.aoi.kind === 'sub' && state.aoi.uid === a.uid)) return;
+    state.adm2 = sub && sub.features.length > 1 ? { ...sub, uid: a.uid } : { features: [], uid: a.uid, none: true };
+    refreshRegions();
+    syncFilters();
+    renderRanking();
+    if (state.lastPts) renderPointsLegend(...state.lastPts);
+  });
+}
+
+async function pickSub(sub, { t } = {}) {
+  beginAOI();
+  const parent = state.aoi.kind === 'region' || state.aoi.kind === 'sub' ? state.aoi : null;
+  if (!parent) return;
+  const s = state.adm2 && state.adm2.G ? await D.subSeries(state.adm2, sub.id) : await D.polygonSeries(sub.geom);
+  if (!s.cells.length) {
+    const km2 = D.geomAreaHa(sub.geom) / 100;
+    return pickCircle(...D.geomCenter(sub.geom), Math.max(10, Math.round(Math.sqrt(km2 / Math.PI))), { t, label: sub.name });
+  }
+  state.aoi = { kind: 'sub', a3: parent.a3, uid: parent.uid, unit: parent.unit, country: parent.country, sid: sub.id, sub, name: sub.name, parentName: parent.unit ? uName(parent.unit) : '', lat: (s.bbox[1] + s.bbox[3]) / 2, lon: (s.bbox[0] + s.bbox[2]) / 2, geom: sub.geom, areaHa: s.areaHa, id: `gb:${sub.id}` };
+  globeApi.hideContext();
+  globeApi.setOutline(D.outlineRings(sub.geom));
+  const [w, so, e, n] = s.bbox;
+  globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.12, Math.min(2.2, Math.max(e - w, n - so) / 12)), 1500);
+  $('btnRotate').classList.remove('on');
+  refreshRegions();
+  await setSeries(s, t);
 }
 
 async function pickCircle(lat, lon, r, { t, label } = {}) {
@@ -104,6 +339,7 @@ async function pickCircle(lat, lon, r, { t, label } = {}) {
   globeApi.hideContext();
   globeApi.setOutline(D.outlineRings(s.geom));
   $('radiusCtl').classList.add('on');
+  refreshRegions();
   globeApi.anchorTo(lat, lon, Math.max(0.14, Math.min(2.2, r / 260)), 1600);
   $('btnRotate').classList.remove('on');
   await setSeries(s, t);
@@ -118,7 +354,8 @@ async function pickPlace(p, { t } = {}) {
   state.aoi = { kind: 'polygon', name: p.name, full: p.full, type: p.type, lat: p.lat, lon: p.lon, geom: p.geom, areaHa: s.areaHa, id: `osm:${p.name}` };
   globeApi.hideContext();
   globeApi.setOutline(D.outlineRings(p.geom));
-  $('radiusCtl').classList.remove('on');
+  $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
+  refreshRegions();
   const [w, so, e, n] = s.bbox;
   const span = Math.max(e - w, n - so);
   globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.14, Math.min(2.2, span / 16)), 1700);
@@ -127,6 +364,11 @@ async function pickPlace(p, { t } = {}) {
 }
 
 async function pickPreset(p) {
+  if (p.region) {
+    const file = await loadRegions(p.region[0]);
+    const u = file && (file.units.find(x => x.name === p.region[1] || x.name_en === p.region[1]) || file.units.find(x => normTxt(x.name).includes(normTxt(p.region[1]))));
+    if (u) return pickRegion(file.a3, u.id, { t: p.t });
+  }
   if (p.country) { const c = state.countries.find(c => c.name === p.country); if (c) return pickCountry(c, { t: p.t }); }
   if (p.place) {
     try { const res = await D.searchPlaces(p.place, state.lang); const hit = res.find(r => r.geom) || res[0]; if (hit) return pickPlace({ ...hit, name: p.label.split(' · ')[0] }, { t: p.t }); } catch (e) { console.warn(e); }
@@ -157,6 +399,12 @@ async function setSeries(s, t) {
 
 // ------------------------------------------------------------ month selection
 const baselineYears = () => (state.baseline === 'full' ? [2003, 2025] : [2012, 2025]);
+// Year range chosen by the user (calendar rows and every download follow it).
+function yearRange() {
+  const last = state.series ? U.yearOf(state.series.n - 1) : 2026;
+  const to = Math.min(last, state.yTo || last), from = Math.max(2000, Math.min(state.yFrom, to));
+  return [from, to];
+}
 const values = () => (state.view === 'naive' ? state.series.naive : state.series.H);
 
 function monthStats(t) {
@@ -179,7 +427,7 @@ async function selectMonth(t, { instant = false } = {}) {
   state.t = t;
   const l = L(), y = U.yearOf(t), m = U.monthOf(t);
   const { medians } = calendar.update({
-    values: values(), n: s.n, mode: state.mode, baseline: baselineYears(), selT: t, firstYear: 2000, lastYear: U.yearOf(s.n - 1),
+    values: values(), n: s.n, mode: state.mode, baseline: baselineYears(), selT: t, firstYear: yearRange()[0], lastYear: yearRange()[1],
     labels: { months: l.months, year: l.year, total: l.total, median: l.median, viirsEra: l.viirsEra, modisEra: l.modisEra, aria: l.calTitle },
     monthCellLabel: (tt, v) => `${l.monthsLong[U.monthOf(tt)]} ${U.yearOf(tt)}: ${U.fmt(v, state.lang)}`,
   });
@@ -217,6 +465,7 @@ async function selectMonth(t, { instant = false } = {}) {
   $('timeLabel').textContent = `${l.months[m]} ${y}`;
   drawSeasonal(charts.seasonal, { values: values(), n: s.n, year: y, baseline: baselineYears(), labels: { months: l.months, median: l.median, iqr: l.iqr }, lang: state.lang });
   drawAnnual(charts.annual, { series: s, lang: state.lang, selYear: y, showNaive: true, labels: { harmonized: l.harmonized, naive: l.naive, band: l.band, reconEra: l.reconEra } });
+  renderRanking();
   await showGlobeMonth(t, { instant, rings: true });
   updateBurned();
   writeHash();
@@ -246,14 +495,20 @@ async function showGlobeMonth(t, { instant = false, rings = true } = {}) {
     for (const c of s.cells) { const v = c.series[t]; if (v > 0) data.push({ key: c.key, lat: c.lat, lng: c.lng, v }); }
     vmax = globeApi.setFocus(data, instant, rings); res = 0.25;
   }
+  restyleRegions();
   renderPointsLegend(res, vmax);
 }
 
 function renderPointsLegend(res, vmax) {
-  const l = L();
+  const l = L(), a = state.aoi;
+  state.lastPts = [res, vmax];
   $('ptsTitle').textContent = l.ptsTitle;
   $('ptsBody').textContent = tpl(l.ptsBody, { km: res === 1 ? '110' : '28' });
   $('ptsMax').textContent = vmax > 0 ? U.fmt(vmax, state.lang) : '—';
+  const fillOn = state.fill && (a.kind === 'world' ? !!state.countriesH : !!(state.regions && (a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') && a.a3 === state.regions.a3));
+  const subsOn = (a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid && !state.adm2.none;
+  $('fillKey').hidden = !fillOn;
+  $('fillKey').textContent = a.kind === 'world' ? l.fillKeyWorld : subsOn ? tpl(l.fillKeySubs, { x: adm2Kind(false).toLowerCase() }) : l.fillKeyRegions;
 }
 
 // Burned area (MODIS MCD64A1 via Planetary Computer) for the selected area and month.
@@ -316,13 +571,23 @@ function stop() {
 // ------------------------------------------------------------ rendering helpers
 function renderAOIHead() {
   const l = L(), a = state.aoi, s = state.series, last = s.n - 1;
-  $('aoiKicker').textContent = a.kind === 'polygon' ? (l.placeTypes[a.type] || l.kicker.polygon) : l.kicker[a.kind];
+  if (a.kind === 'country') { const c = countryByFid(a.id); if (c) a.name = cName(c); }
+  if (a.kind === 'region' && a.unit) { a.name = uName(a.unit); a.type = uType(a.unit); }
+  if (a.kind === 'sub' && a.unit) a.parentName = uName(a.unit);
+  const subKind = adm2Kind(true);
+  $('aoiKicker').textContent = a.kind === 'polygon' ? (l.placeTypes[a.type] || l.kicker.polygon) : a.kind === 'region' ? a.type : a.kind === 'sub' ? subKind : l.kicker[a.kind];
   $('aoiName').textContent = a.name;
   const lastLbl = `${l.months[U.monthOf(last)]} ${U.yearOf(last)}`;
   const areaTxt = a.areaHa ? ` · ${U.fmt(a.areaHa / 100, state.lang)} km²` : '';
+  const ctry = a.country ? cName(a.country) : '';
   if (a.kind === 'circle') $('aoiMeta').textContent = `${a.lat.toFixed(3)}°, ${a.lon.toFixed(3)}° · ${tpl(l.radiusLabel, { r: a.radiusKm })} · ${s.cells.length} × 0.25° ${l.cells}`;
   else if (a.kind === 'polygon') $('aoiMeta').textContent = `${a.full || ''}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells}`;
+  else if (a.kind === 'region') $('aoiMeta').textContent = `${[a.unit.iso, ctry].filter(Boolean).join(' · ')}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells}`;
+  else if (a.kind === 'sub') $('aoiMeta').textContent = `${[a.parentName, ctry].filter(Boolean).join(', ')}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells} · geoBoundaries${state.adm2 && state.adm2.source ? ` (${state.adm2.source}${state.adm2.license ? `, ${state.adm2.license}` : ''})` : ''}`;
   else $('aoiMeta').textContent = tpl(l.countryMeta, { last: lastLbl });
+  renderCrumbs();
+  syncFilters();
+  renderRanking();
   $('banner').textContent = tpl(l.banner, { last: lastLbl });
   const chips = $('presetChips');
   chips.innerHTML = '';
@@ -333,6 +598,101 @@ function renderAOIHead() {
     b.addEventListener('click', () => pickPreset(p));
     chips.appendChild(b);
   }
+}
+
+// Breadcrumb: World > Country > Province / state > Department
+function renderCrumbs() {
+  const l = L(), a = state.aoi, items = [{ k: 'world', label: l.world }];
+  const c = a.kind === 'country' ? countryByFid(a.id) : a.country;
+  if (c && a.kind !== 'world') items.push({ k: 'country', label: cName(c) });
+  if ((a.kind === 'region' || a.kind === 'sub') && a.unit) items.push({ k: 'region', label: uName(a.unit) });
+  if (a.kind === 'sub') items.push({ k: 'sub', label: a.name });
+  if (a.kind === 'circle' || a.kind === 'polygon') items.push({ k: 'self', label: a.name });
+  const el = $('crumbs');
+  el.innerHTML = items.map((it, i) => (i === items.length - 1 ? `<span aria-current="page">${it.label}</span>` : `<button type="button" data-k="${it.k}">${it.label}</button><i aria-hidden="true">›</i>`)).join('');
+  el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.k;
+    if (k === 'world') pickWorld({ t: state.t });
+    else if (k === 'country' && c) pickCountry(c, { t: state.t });
+    else if (k === 'region') pickRegion(a.a3, a.uid, { t: state.t });
+  }));
+}
+
+// Filters: country -> province / state -> department / county (third level loads on demand).
+function populateCountrySelect() {
+  const sel = $('selCountry'), l = L();
+  const list = [...state.countries].filter(c => c.total > 0).sort((x, y) => cName(x).localeCompare(cName(y), state.lang));
+  sel.innerHTML = `<option value="">${l.fAll}</option>` + list.map(c => `<option value="${c.id}">${cName(c)}</option>`).join('');
+}
+function syncFilters() {
+  const a = state.aoi, l = L();
+  const fid = a.kind === 'country' ? a.id : a.country ? a.country.id : null;
+  $('selCountry').value = fid != null && (a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') ? String(fid) : '';
+  const reg = $('selRegion'), file = state.regions;
+  const deep = (a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') && file && a.a3 === file.a3;
+  $('fRegionWrap').hidden = !deep;
+  if (deep) {
+    const units = [...file.units].sort((x, y) => uName(x).localeCompare(uName(y), state.lang));
+    const counts = new Map();
+    for (const u of units) { const k = uType(u); counts.set(k, (counts.get(k) || 0) + 1); }
+    const typ = [...counts.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] || l.fRegion;
+    $('fRegionLbl').textContent = `${typ} (${units.length})`;
+    reg.innerHTML = `<option value="">${tpl(l.fAllOf, { x: a.kind === 'country' ? a.name : cName(a.country) || file.admin })}</option>` + units.map(u => `<option value="${u.id}">${uName(u)}</option>`).join('');
+    reg.value = a.kind === 'region' || a.kind === 'sub' ? a.uid : '';
+  }
+  const sub = $('selAdm2'), d = state.adm2;
+  const inRegion = a.kind === 'region' || a.kind === 'sub';
+  $('fAdm2Wrap').hidden = !inRegion;
+  if (inRegion && d && d.uid === a.uid) {
+    sub.disabled = !!d.none;
+    $('fAdm2Lbl').textContent = d.none ? l.fAdm2 : `${adm2Kind(false)} (${d.features.length})`;
+    sub.innerHTML = d.none ? `<option value="">${l.adm2None}</option>` : `<option value="">${tpl(l.fAllOf, { x: a.parentName || a.name })}</option>` + d.features.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    sub.value = a.kind === 'sub' ? a.sid : '';
+  }
+}
+
+// Ranking: where is it burning this month? Countries at world level, provinces / states inside a country.
+function rankingItems() {
+  const a = state.aoi;
+  if (a.kind === 'world') {
+    if (!state.countriesH) return null;
+    return state.countries.filter(c => state.countriesH.H[c.id]).map(c => ({ name: cName(c), sub: '', arr: state.countriesH.H[c.id], go: () => pickCountry(c, { t: state.t }) }));
+  }
+  // Inside a province: rank its departments / counties when we have them.
+  const d = state.adm2;
+  if ((a.kind === 'region' || a.kind === 'sub') && d && d.uid === a.uid && !d.none && d.H) {
+    return d.features.map(f => ({ name: f.name, sub: '', arr: d.H[f.id], sel: a.kind === 'sub' && a.sid === f.id, go: () => pickSub(f, { t: state.t }) }));
+  }
+  const file = state.regions;
+  if (!file || !(a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') || a.a3 !== file.a3) return null;
+  return file.units.map(u => ({ name: uName(u), sub: uType(u), arr: file.H[u.id], sel: (a.kind === 'region' || a.kind === 'sub') && a.uid === u.id, go: () => pickRegion(file.a3, u.id, { t: state.t }) }));
+}
+function renderRanking() {
+  const card = $('ranking'), l = L(), a = state.aoi;
+  const items = state.series ? rankingItems() : null;
+  if (!items || items.length < 2) { card.hidden = true; return; }
+  card.hidden = false;
+  const t = state.t, mo = `${l.monthsLong[U.monthOf(t)]} ${U.yearOf(t)}`;
+  const rows = items.map(it => ({ ...it, st: seriesStats(it.arr, t) })).sort((x, y) => y.st.v - x.st.v);
+  const active = rows.filter(r => r.st.v > 0).length;
+  const inProv = (a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid && !state.adm2.none && state.adm2.H;
+  const where = a.kind === 'country' ? a.name : inProv ? (a.unit ? uName(a.unit) : a.name) : cName(a.country) || '';
+  $('rankTitle').textContent = a.kind === 'world' ? tpl(l.rankWorld, { m: mo }) : tpl(l.rankRegions, { m: mo, c: where });
+  $('rankSub').textContent = tpl(l.rankSub, { n: U.fmt(active, state.lang), total: U.fmt(rows.length, state.lang) });
+  const top = rows[0] && rows[0].st.v > 0 ? rows[0].st.v : 1;
+  const limit = state.rankAll ? rows.length : 8;
+  let shown = rows.slice(0, limit);
+  const selRow = rows.findIndex(r => r.sel);
+  if (selRow >= limit) shown = [...shown, rows[selRow]];
+  $('rankList').innerHTML = shown.map(r => {
+    const i = rows.indexOf(r);
+    const an = r.st.anom, cls = an > 0.25 ? 'hot' : an < -0.2 ? 'cool' : '';
+    const anTxt = r.st.v > 0 || r.st.med > 0 ? (isFinite(an) ? U.pct(an, state.lang) : l.newActivity) : '—';
+    return `<button type="button" class="rk${r.sel ? ' sel' : ''}" data-i="${i}" role="listitem"><span class="rk-n">${i + 1}</span><span class="rk-name">${r.name}${r.sub ? `<small>${r.sub}</small>` : ''}</span><span class="rk-bar"><i style="width:${Math.max(0.5, (100 * r.st.v) / top).toFixed(1)}%"></i></span><span class="rk-v">${U.fmt(r.st.v, state.lang)}</span><span class="rk-a ${cls}">${anTxt}</span></button>`;
+  }).join('');
+  $('rankList').querySelectorAll('.rk').forEach(b => b.addEventListener('click', () => rows[Number(b.dataset.i)].go()));
+  $('rankMore').hidden = rows.length <= 8;
+  $('rankMore').textContent = state.rankAll ? l.rankLess : tpl(l.rankMore, { n: rows.length });
 }
 
 function renderLegend() {
@@ -393,7 +753,8 @@ function areaSlug() { return U.slug(state.aoi.name) || 'area'; }
 function exportCalendarCSV() {
   const s = state.series, v = values(), l = I18N.en;
   const rows = [['year', ...l.months, 'total'].join(',')];
-  for (let y = 2000; y <= U.yearOf(s.n - 1); y++) {
+  const [ya, yb] = yearRange();
+  for (let y = ya; y <= yb; y++) {
     const cells = []; let tot = 0;
     for (let m = 0; m < 12; m++) { const t = U.tOf(y, m); if (t < 0 || t >= s.n) cells.push(''); else { cells.push(v[t].toFixed(1)); tot += v[t]; } }
     rows.push([y, ...cells, tot.toFixed(1)].join(','));
@@ -407,7 +768,9 @@ function exportSeriesCSV() {
   const sats = s.raw ? Object.keys(s.raw).filter(k => s.raw[k]) : [];
   head.push(...sats.map(k => `raw_${U.slug(k)}`));
   const rows = [head.join(',')];
+  const [ya, yb] = yearRange();
   for (let t = 0; t < s.n; t++) {
+    if (U.yearOf(t) < ya || U.yearOf(t) > yb) continue;
     const y = U.yearOf(t), m = U.monthOf(t);
     rows.push([`${y}-${String(m + 1).padStart(2, '0')}`, s.H[t].toFixed(1), s.lo[t].toFixed(1), s.hi[t].toFixed(1), U.isRecon(t) ? 'reconstructed' : 'observed', U.refSatOf(t), s.naive[t].toFixed(0), ...sats.map(k => s.raw[k][t] ?? 0)].join(','));
   }
@@ -416,7 +779,7 @@ function exportSeriesCSV() {
 }
 function exportPNG() {
   const s = state.series, v = values(), l = L();
-  const y0 = 2000, y1 = U.yearOf(s.n - 1), rowsN = y1 - y0 + 1;
+  const [y0, y1] = yearRange(), rowsN = y1 - y0 + 1;
   const cw = 58, ch = 24, left = 70, top = 96, W = left + 12 * cw + 90, Hh = top + rowsN * ch + 70;
   const c = document.createElement('canvas'); c.width = W * 2; c.height = Hh * 2;
   const g = c.getContext('2d'); g.scale(2, 2);
@@ -450,8 +813,11 @@ function exportPNG() {
 function writeHash() {
   const a = state.aoi, parts = [];
   if (a.kind === 'country') parts.push(`c=${a.id}`);
+  if (a.kind === 'region' || a.kind === 'sub') parts.push(`r=${a.a3}~${a.uid}`);
   if (a.kind === 'circle') parts.push(`p=${a.lat.toFixed(3)},${a.lon.toFixed(3)},${a.radiusKm}`);
   parts.push(`t=${U.yearOf(state.t)}-${String(U.monthOf(state.t) + 1).padStart(2, '0')}`);
+  const [ya, yb] = yearRange();
+  if (state.series && (ya !== 2000 || yb !== U.yearOf(state.series.n - 1))) parts.push(`yr=${ya}-${yb}`);
   if (state.lang !== 'en') parts.push(`lang=${state.lang}`);
   history.replaceState(null, '', `#${parts.join('&')}`);
 }
@@ -459,9 +825,11 @@ function readHash() {
   const h = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map(kv => kv.split('=')));
   const out = {};
   if (h.c) out.c = h.c;
+  if (h.r) { const [a3, uid] = decodeURIComponent(h.r).split('~'); if (a3 && uid) out.r = [a3, uid]; }
   if (h.p) { const [a, b, r] = h.p.split(',').map(Number); if (isFinite(a) && isFinite(b)) out.p = [a, b, r || 150]; }
   if (h.t) { const [y, m] = h.t.split('-').map(Number); out.t = U.tOf(y, m - 1); }
   if (h.lang === 'es') state.lang = 'es';
+  if (h.yr) { const [a, b] = h.yr.split('-').map(Number); if (a >= 2000 && b >= a) { state.yFrom = a; state.yTo = b; } }
   state.pendingHash = out;
 }
 
@@ -485,7 +853,23 @@ function setupUI() {
   seg('mCounts', 'mAnom', 'mode', 'counts', 'anomaly');
   seg('vHarm', 'vNaive', 'view', 'harmonized', 'naive');
   $('baseSel').addEventListener('change', e => { state.baseline = e.target.value; selectMonth(state.t); });
-  const setLang = lang => { state.lang = lang; applyLang(); if (state.aoi.kind === 'world') state.aoi.name = L().world; renderAOIHead(); renderEras(); selectMonth(state.t); drawValidation(); };
+  const fillYears = () => {
+    const last = state.meta ? U.yearOf(state.meta.months - 1) : 2026, [ya, yb] = yearRange();
+    const opts = sel => Array.from({ length: last - 2000 + 1 }, (_, i) => 2000 + i).map(y => `<option value="${y}"${y === sel ? ' selected' : ''}>${y}</option>`).join('');
+    $('yFrom').innerHTML = opts(ya); $('yTo').innerHTML = opts(yb);
+  };
+  fillYears();
+  const onYears = () => {
+    let a = Number($('yFrom').value), b = Number($('yTo').value);
+    if (a > b) [a, b] = [b, a];
+    state.yFrom = a; state.yTo = b; fillYears();
+    const [ya, yb] = yearRange();
+    const t = U.yearOf(state.t) < ya || U.yearOf(state.t) > yb ? Math.min(state.series.n - 1, U.tOf(yb, U.monthOf(state.t))) : state.t;
+    selectMonth(Math.max(0, t));
+  };
+  $('yFrom').addEventListener('change', onYears);
+  $('yTo').addEventListener('change', onYears);
+  const setLang = lang => { state.lang = lang; applyLang(); if (state.aoi.kind === 'world') state.aoi.name = L().world; populateCountrySelect(); renderAOIHead(); renderEras(); selectMonth(state.t); drawValidation(); };
   $('langEn').addEventListener('click', () => setLang('en'));
   $('langEs').addEventListener('click', () => setLang('es'));
   $('btnWorld').addEventListener('click', () => pickWorld({ t: state.t }));
@@ -497,6 +881,51 @@ function setupUI() {
   });
   $('btnClouds').addEventListener('click', () => $('btnClouds').classList.toggle('on', globeApi.toggleClouds()));
   $('btnHome').addEventListener('click', () => { if (globeApi.anchored) globeApi.recenter(); else globeApi.flyTo(-8, -45, 2.6, 1500); });
+  // Click mode: regions (country -> province / state -> department) or a circle of adjustable radius.
+  const setPickMode = m => {
+    state.pickMode = m;
+    $('pmRegion').classList.toggle('on', m === 'region'); $('pmCircle').classList.toggle('on', m === 'circle');
+    $('pmRegion').setAttribute('aria-pressed', m === 'region'); $('pmCircle').setAttribute('aria-pressed', m === 'circle');
+    $('radiusCtl').classList.toggle('on', m === 'circle' || state.aoi.kind === 'circle');
+    $('globeHint').textContent = m === 'circle' ? L().pickHintCircle : L().pickHint;
+    $('globeHint').style.opacity = '1';
+    clearTimeout(setPickMode.t); setPickMode.t = setTimeout(() => { $('globeHint').style.opacity = '0'; }, 5000);
+    restyleRegions();
+  };
+  $('pmRegion').addEventListener('click', () => setPickMode('region'));
+  $('pmCircle').addEventListener('click', () => setPickMode('circle'));
+  $('btnFill').addEventListener('click', () => {
+    state.fill = !state.fill;
+    $('btnFill').classList.toggle('on', state.fill); $('btnFill').setAttribute('aria-pressed', state.fill);
+    restyleRegions(); if (state.lastPts) renderPointsLegend(...state.lastPts);
+  });
+
+  // Region filters.
+  populateCountrySelect();
+  $('selCountry').addEventListener('change', e => {
+    const v = e.target.value;
+    if (!v) return pickWorld({ t: state.t });
+    const c = countryByFid(Number(v));
+    if (c) pickCountry(c, { t: state.t });
+  });
+  $('selRegion').addEventListener('change', e => {
+    const v = e.target.value, a = state.aoi, file = state.regions;
+    if (!file) return;
+    if (v) return pickRegion(file.a3, v, { t: state.t });
+    const fid = file.fid != null ? file.fid : state.fidByA3.get(file.a3);
+    const c = countryByFid(fid);
+    if (c) pickCountry(c, { t: state.t });
+    else if (a.kind !== 'world') pickWorld({ t: state.t });
+  });
+  $('selAdm2').addEventListener('change', e => {
+    const v = e.target.value, a = state.aoi, d = state.adm2;
+    if (!d) return;
+    if (!v) { if (a.kind === 'sub') pickRegion(a.a3, a.uid, { t: state.t }); return; }
+    const f = d.features.find(x => String(x.id) === v);
+    if (f) pickSub(f, { t: state.t });
+  });
+  $('rankMore').addEventListener('click', () => { state.rankAll = !state.rankAll; renderRanking(); });
+
   let rt;
   $('radiusRange').addEventListener('input', e => {
     const r = Number(e.target.value); $('radiusVal').textContent = r; state.radiusKm = r;
@@ -516,14 +945,34 @@ function setupUI() {
   const input = $('search'), box = $('searchResults');
   let active = 0, list = [];
   const typeLabel = ty => (L().placeTypes[ty] || ty || '');
+  const ensureIndex = () => {
+    if (state.regionIndex || ensureIndex.p) return;
+    ensureIndex.p = D.getRegionIndex().then(ix => {
+      state.regionIndex = ix.units.map(r => ({ id: r[0], a3: r[1], name: r[2], name_en: r[3] || r[2], name_es: r[4] || r[2], type_en: r[5], key: normTxt([r[2], r[3], r[4]].join(' ')) }));
+      if (document.activeElement === input) renderList();
+    }).catch(() => {});
+  };
+  const regionMatches = q => {
+    if (!state.regionIndex || q.length < 2) return [];
+    const nq = normTxt(q), out = [];
+    for (const r of state.regionIndex) {
+      const i = r.key.indexOf(nq);
+      if (i < 0) continue;
+      out.push({ r, score: (i === 0 || r.key[i - 1] === ' ' ? 0 : 1) });
+    }
+    out.sort((x, y) => x.score - y.score || x.r.name.length - y.r.name.length);
+    return out.slice(0, 7).map(x => ({ kind: 'region', r: x.r }));
+  };
+  const regionCountry = r => { const fid = state.fidByA3.get(r.a3); const c = fid != null ? countryByFid(fid) : null; return c ? cName(c) : r.a3; };
   const renderList = () => {
-    const q = input.value.trim().toLowerCase();
-    const cs = (q ? state.countries.filter(c => c.name.toLowerCase().includes(q)) : state.countries).slice(0, q ? 6 : 12).map(c => ({ kind: 'country', c }));
-    list = [...cs, ...state.places.map(p => ({ kind: 'place', p }))];
-    if (q.length >= 2) list.push({ kind: 'search', q: input.value.trim() });
+    const raw = input.value.trim(), q = normTxt(raw);
+    const cs = (q ? state.countries.filter(c => normTxt(c.name).includes(q) || normTxt(state.nameEs.get(c.id) || '').includes(q)) : state.countries).slice(0, q ? 5 : 12).map(c => ({ kind: 'country', c }));
+    list = [...cs, ...regionMatches(raw), ...state.places.map(p => ({ kind: 'place', p }))];
+    if (q.length >= 2) list.push({ kind: 'search', q: raw });
     box.innerHTML = list.map((it, i) => {
       const cls = i === active ? 'active' : '';
-      if (it.kind === 'country') return `<button role="option" class="${cls}" data-i="${i}"><span>${it.c.name}</span><small>${L().country}</small></button>`;
+      if (it.kind === 'country') return `<button role="option" class="${cls}" data-i="${i}"><span>${cName(it.c)}</span><small>${L().country}</small></button>`;
+      if (it.kind === 'region') return `<button role="option" class="${cls}" data-i="${i}"><span>${uName(it.r)}<br><small>${regionCountry(it.r)}</small></span><small>${(state.lang === 'es' ? L().typeEs[it.r.type_en] : it.r.type_en) || L().fRegion}</small></button>`;
       if (it.kind === 'place') return `<button role="option" class="${cls}" data-i="${i}"><span>${it.p.name}<br><small>${it.p.full.split(',').slice(1, 3).join(',')}</small></span><small>${typeLabel(it.p.type)}</small></button>`;
       return `<button role="option" class="${cls}" data-i="${i}"><span>${tpl(L().searchPlaces, { q: it.q })}</span><small>OSM ↵</small></button>`;
     }).join('');
@@ -542,9 +991,10 @@ function setupUI() {
     if (it.kind === 'search') { runPlaceSearch(it.q); return; }
     box.classList.remove('open'); input.blur();
     if (it.kind === 'country') pickCountry(it.c, { t: state.t });
+    else if (it.kind === 'region') pickRegion(it.r.a3, it.r.id, { t: state.t });
     else pickPlace(it.p, { t: state.t });
   };
-  input.addEventListener('focus', () => { active = 0; renderList(); });
+  input.addEventListener('focus', () => { active = 0; ensureIndex(); renderList(); });
   input.addEventListener('input', () => { active = 0; state.places = []; renderList(); });
   input.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown') { active = Math.min(list.length - 1, active + 1); renderList(); e.preventDefault(); }
@@ -552,7 +1002,7 @@ function setupUI() {
     else if (e.key === 'Enter') {
       e.preventDefault();
       const q = input.value.trim();
-      const exact = state.countries.find(c => c.name.toLowerCase() === q.toLowerCase());
+      const exact = state.countries.find(c => normTxt(c.name) === normTxt(q) || normTxt(state.nameEs.get(c.id) || '') === normTxt(q));
       if (list[active] && (list[active].kind !== 'search' || !exact)) choose(list[active]);
       else if (exact) choose({ kind: 'country', c: exact });
     } else if (e.key === 'Escape') { box.classList.remove('open'); input.blur(); }

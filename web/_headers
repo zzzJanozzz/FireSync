@@ -1,0 +1,33 @@
+# Cloudflare Pages response headers for FireSync (https://firesync.space).
+# Docs: https://developers.cloudflare.com/pages/configuration/headers/
+# Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  X-Frame-Options: SAMEORIGIN
+  Cross-Origin-Opener-Policy: same-origin
+
+# HTML: always revalidate so a redeploy is visible at once.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+# App code: short cache (file names are not hashed).
+/js/*
+  Cache-Control: public, max-age=600, stale-while-revalidate=86400
+/css/*
+  Cache-Control: public, max-age=600, stale-while-revalidate=86400
+
+# Harmonized data products: change only when the pipeline is re-run.
+/data/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+
+/assets/*
+  Cache-Control: public, max-age=2592000, stale-while-revalidate=604800
+
+/og.png
+  Cache-Control: public, max-age=86400

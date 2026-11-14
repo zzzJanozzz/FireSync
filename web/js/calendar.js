@@ -30,8 +30,8 @@ export class Calendar {
     this.yearEls = new Map();
     this.totEls = new Map();
     for (let y = lastYear; y >= firstYear; y--) {
-      if (y === lastYear) add('era-sep', labels.viirsEra);
-      if (y === 2011) add('era-sep', labels.modisEra);
+      if (y === lastYear && lastYear >= 2012) add('era-sep', labels.viirsEra);
+      if (y === Math.min(2011, lastYear)) add('era-sep', labels.modisEra);
       const ye = add('yr', String(y));
       ye.dataset.year = y;
       ye.addEventListener('click', () => {

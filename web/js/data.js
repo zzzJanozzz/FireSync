@@ -100,7 +100,8 @@ export function geomAreaHa(geom) {
   for (const poly of polygonsOf(geom)) { total += ringArea(poly[0]); for (let h = 1; h < poly.length; h++) total -= ringArea(poly[h]); }
   return total / 1e4;
 }
-export function outlineRings(geom, alt = 0.004) {
+export function geomCenter(geom) { const [w, s, e, n] = geomBBox(geom); return [(s + n) / 2, (w + e) / 2]; }
+export function outlineRings(geom, alt = 0.006) {
   const rings = [];
   for (const poly of polygonsOf(geom)) for (const ring of poly) rings.push(ring.map(([x, y]) => [y, x, alt]));
   return rings;
@@ -120,6 +121,7 @@ function getTile(key) {
   if (!tileCache.has(key)) tileCache.set(key, getJSON(`tiles/${key}.json`));
   return tileCache.get(key);
 }
+// inside(lat, lon, cellIndex) decides which 0.25-degree cells belong to the area.
 async function cellsSeries(bbox, inside, label) {
   const [meta, factors] = await Promise.all([getMeta(), getFactors()]);
   const res = meta.tileRes, tileDeg = meta.tileDeg, cols = Math.round(360 / res);
@@ -138,7 +140,7 @@ async function cellsSeries(bbox, inside, label) {
   for (const tile of tiles)
     for (const [g, dom, arr] of tile.cells) {
       const clat = -90 + (Math.floor(g / cols) + 0.5) * res, clon = -180 + ((g % cols) + 0.5) * res;
-      if (!inside(clat, clon)) continue;
+      if (!inside(clat, clon, g)) continue;
       const f = factors.countries[dom];
       const series = new Float32Array(n);
       for (let i = 0; i < arr.length; i += 3) {
@@ -165,6 +167,39 @@ export async function polygonSeries(geom) {
   const bbox = geomBBox(geom);
   const r = await cellsSeries(bbox, (la, lo) => pointInGeom(lo, la, geom));
   return { ...r, kind: 'polygon', geom, bbox, areaHa: geomAreaHa(geom), raw: null };
+}
+
+// ------------------------------------------------------------ regions: countries and every province / state on Earth
+// Built by scripts/build_regions.mjs from Natural Earth (public domain) and the FireSync tiles.
+export const getWorldBorders = () => getJSON('regions/world.json');
+export const getCountriesH = () => getJSON('regions/countries_H.json');
+export const getRegionIndex = () => getJSON('regions/index.json');
+export const getRegions = a3 => getJSON(`regions/${a3}.json`);
+
+// Harmonized series of one province / state: exactly the cells the builder assigned to it.
+export async function unitSeries(file, uid) {
+  const u = file.units.find(x => x.id === uid);
+  if (!u) throw new Error(`unknown region ${uid}`);
+  const set = new Set(file.G[uid] || []);
+  const f = file.geo.features.find(x => x.properties.id === uid);
+  const geom = f ? f.geometry : null;
+  const [w, s, e, n] = u.bbox;
+  const r = await cellsSeries([w - 0.6, s - 0.6, e + 0.6, n + 0.6], (la, lo, g) => set.has(g));
+  return { ...r, kind: 'region', geom, bbox: u.bbox, areaHa: u.km2 * 100, raw: null, unit: u };
+}
+
+// Third level (departments, counties, districts...): geoBoundaries gbOpen ADM2 (open licences, ~180 countries),
+// nested in each province / state and joined to the cells by scripts/build_adm2.mjs. One small file per province.
+const fileKey = id => String(id).replace(/[^A-Za-z0-9_-]/g, c => '_' + c.charCodeAt(0).toString(16));
+export const getAdm2 = uid => getJSON(`adm2/${fileKey(uid)}.json`);
+export async function subSeries(file, sid) {
+  const u = file.units.find(x => x.id === sid);
+  if (!u) throw new Error(`unknown subdivision ${sid}`);
+  const set = new Set(file.G[sid] || []);
+  const f = file.geo.features.find(x => x.properties.id === sid);
+  const [w, s, e, n] = u.bbox;
+  const r = await cellsSeries([w - 0.6, s - 0.6, e + 0.6, n + 0.6], (la, lo, g) => set.has(g));
+  return { ...r, kind: 'sub', geom: f ? f.geometry : null, bbox: u.bbox, areaHa: u.km2 * 100, raw: null, unit: u };
 }
 
 // ------------------------------------------------------------ world layer (1-degree)

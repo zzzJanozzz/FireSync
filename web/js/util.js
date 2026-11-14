@@ -120,3 +120,4 @@ export function animateNumber(el, to, { lang = 'en', duration = 700, format } = 
   };
   requestAnimationFrame(step);
 }
+export const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);

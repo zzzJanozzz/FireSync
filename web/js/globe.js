@@ -5,8 +5,10 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.171.0/+esm';
 import Globe from 'https://cdn.jsdelivr.net/npm/globe.gl@2.34.2/+esm';
 import { fire } from './util.js';
 
-const TEX = 'https://cdn.jsdelivr.net/npm/three-globe@2.35.3/example/img/';
-const CLOUDS = 'https://cdn.jsdelivr.net/npm/globe.gl@2.34.2/example/clouds/clouds.png';
+// NASA Blue Marble, relief, water mask, star field and clouds from the three-globe / globe.gl examples (MIT),
+// re-encoded as WebP and served from our own domain: 8.2 MB -> 1.3 MB, and no third-party CDN for imagery.
+const TEX = 'assets/tex/';
+const CLOUDS = TEX + 'clouds.webp';
 const UP = new THREE.Vector3(0, 1, 0);
 
 // One instanced mesh of hexagonal columns. Values ease toward their targets every frame.
@@ -73,13 +75,13 @@ class Columns {
   }
 }
 
-export function createGlobe(el, { onPick } = {}) {
+export function createGlobe(el, { onPick, onRegion } = {}) {
   const globe = new Globe(el, { animateIn: true, rendererConfig: { antialias: true, powerPreference: 'high-performance' } })
     .width(el.clientWidth).height(el.clientHeight)
     .backgroundColor('#050505')
-    .globeImageUrl(TEX + 'earth-blue-marble.jpg')
-    .bumpImageUrl(TEX + 'earth-topology.png')
-    .backgroundImageUrl(TEX + 'night-sky.png')
+    .globeImageUrl(TEX + 'earth-blue-marble.webp')
+    .bumpImageUrl(TEX + 'earth-topology.webp')
+    .backgroundImageUrl(TEX + 'night-sky.webp')
     .showAtmosphere(true).atmosphereColor('#8db8e8').atmosphereAltitude(0.17)
     .showGraticules(false)
     .pathPoints('pts').pathPointLat(p => p[0]).pathPointLng(p => p[1]).pathPointAlt(p => p[2])
@@ -89,11 +91,48 @@ export function createGlobe(el, { onPick } = {}) {
     .ringLat('lat').ringLng('lng')
     .ringColor(() => t => `rgba(255,${Math.round(150 + 80 * (1 - t))},70,${Math.max(0, 1 - t)})`)
     .ringMaxRadius('maxR').ringPropagationSpeed(1.6).ringRepeatPeriod(1400).ringAltitude(0.003)
-    .onGlobeClick(({ lat, lng }) => onPick && onPick(lat, lng));
+    .onGlobeClick(({ lat, lng }) => onPick && onPick(lat, lng, null));
 
+  // ---------------------------------------------------------- regions layer (countries, provinces / states)
+  // Each feature: {geometry, kind: 'country' | 'context' | 'unit' | 'sub', id, ...}. Caps are nearly
+  // transparent so the hotspot columns stay readable; the fill function paints the choropleth.
+  let hover = null;
+  let style = { fill: null, selected: null, label: null };
+  const ALT = { context: 0.0015, country: 0.0025, unit: 0.0035, sub: 0.0045 };
+  const capColor = f => {
+    const isHover = hover === f, isSel = style.selected != null && f.id === style.selected;
+    if (isSel) return isHover ? 'rgba(255,247,194,0.10)' : 'rgba(0,0,0,0)';
+    const fill = style.fill ? style.fill(f) : null;
+    if (isHover) return fill ? fill.replace(/[\d.]+\)$/, '0.82)') : 'rgba(255,247,194,0.16)';
+    return fill || 'rgba(0,0,0,0)';
+  };
+  const strokeColor = f => {
+    if (style.selected != null && f.id === style.selected) return 'rgba(255,247,194,0.95)';
+    if (hover === f) return 'rgba(255,247,194,0.95)';
+    return f.kind === 'context' ? 'rgba(236,232,223,0.16)' : f.kind === 'country' ? 'rgba(236,232,223,0.34)' : f.kind === 'sub' ? 'rgba(236,232,223,0.42)' : 'rgba(236,232,223,0.5)';
+  };
+  const restyle = () => {
+    globe.polygonCapColor(f => capColor(f)).polygonStrokeColor(f => strokeColor(f));
+  };
+  globe.polygonsData([])
+    .polygonGeoJsonGeometry('geometry')
+    .polygonCapCurvatureResolution(3)
+    .polygonsTransitionDuration(0)
+    .polygonAltitude(f => ALT[f.kind] || 0.003)
+    .polygonSideColor(() => 'rgba(0,0,0,0)')
+    .polygonLabel(f => (style.label ? style.label(f) : ''))
+    .onPolygonHover(f => {
+      hover = f || null;
+      el.style.cursor = hover ? 'pointer' : '';
+      restyle();
+    })
+    .onPolygonClick((f, ev, coords) => onRegion && onRegion(f, coords || {}));
+  restyle();
+
+  try { globe.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75)); } catch (e) { /* older globe.gl */ }
   const mat = globe.globeMaterial();
   mat.bumpScale = 12;
-  new THREE.TextureLoader().load(TEX + 'earth-water.png', tex => {
+  new THREE.TextureLoader().load(TEX + 'earth-water.webp', tex => {
     mat.specularMap = tex; mat.specular = new THREE.Color('#5f7894'); mat.shininess = 18; mat.needsUpdate = true;
   });
   setTimeout(() => {
@@ -175,5 +214,9 @@ export function createGlobe(el, { onPick } = {}) {
     setAutoRotate(on) { controls.autoRotate = on && !anchor; },
     get autoRotate() { return controls.autoRotate; },
     toggleClouds() { showClouds = !showClouds; if (clouds) clouds.visible = showClouds; return showClouds; },
+    // Replace the clickable region polygons (countries or provinces / states).
+    setRegions(features) { hover = null; globe.polygonsData(features || []); restyle(); },
+    // fill: feature -> 'rgba(...)' | null; selected: feature id drawn as a bright outline; label: feature -> HTML
+    styleRegions(next) { style = { ...style, ...next }; restyle(); },
   };
 }
