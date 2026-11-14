@@ -1,0 +1,20 @@
+# Raw FIRMS archives and intermediate aggregates (regenerable, ~9 GB)
+data/raw/
+data/work/
+pipeline/bin/
+*.log
+*.tmp
+
+# Private FIRMS MAP_KEY (never commit)
+scripts/firms_key.txt
+.env
+scripts/firms_key_backup.txt
+
+# Local tools (portable git) and downloads
+tools/
+*.part
+
+# Internal team files kept out of the public repository
+message.txt
+WebNasa2.html
+globo_terr_queo_3d_interactivo.html

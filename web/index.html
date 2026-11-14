@@ -1,0 +1,193 @@
+<!doctype html>
+<!-- FireSync. Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FireSync · Harmonized Fire Calendar</title>
+  <meta name="description" content="FireSync harmonizes 25 years of NASA FIRMS MODIS and VIIRS active-fire hotspots into one consistent burning activity calendar for any place on Earth.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230e0d0b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23e8590c'/%3E%3C/svg%3E">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="intro" id="intro">
+    <div class="intro-inner">
+      <div class="intro-logo">Fire<span>Sync</span></div>
+      <div class="intro-tag" data-i18n="tagline">The continuity engine for Earth's fire record</div>
+      <div class="intro-bar"><i id="introBar"></i></div>
+      <div class="intro-status" id="introStatus">Loading</div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>Fire<span>Sync</span></h1>
+      <p data-i18n="tagline">The continuity engine for Earth's fire record</p>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#calendarSec" data-i18n="navCal">Calendar</a>
+      <a href="#seasonSec" data-i18n="navSeason">Seasonality</a>
+      <a href="#validation" data-i18n="navVal">Validation</a>
+      <a href="#method" data-i18n="navMethod">Method</a>
+    </nav>
+    <div class="top-actions">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" autocomplete="off" aria-label="Search a country, province or town" data-i18n-ph="search" placeholder="Country, province or town…">
+        <div class="search-results" id="searchResults" role="listbox"></div>
+      </div>
+      <button class="btn" id="btnWorld" data-i18n="world">World</button>
+      <div class="rel">
+        <button class="btn" id="btnLatLon" aria-expanded="false" data-i18n="latlon">Lat / Lon</button>
+        <form class="pop glass" id="popLatLon">
+          <div class="row2">
+            <div><label for="inLat" data-i18n="lat">Latitude</label><input id="inLat" type="number" step="0.01" min="-90" max="90" value="-29.18"></div>
+            <div><label for="inLon" data-i18n="lon">Longitude</label><input id="inLon" type="number" step="0.01" min="-180" max="180" value="-67.64"></div>
+          </div>
+          <label for="inRad" data-i18n="radius">Radius (km)</label><input id="inRad" type="number" min="10" max="1500" step="5" value="40">
+          <button class="btn primary" type="submit" style="margin-top:12px;width:100%;justify-content:center" data-i18n="analyze">Analyze area</button>
+        </form>
+      </div>
+      <div class="seg" role="group" aria-label="Language"><button id="langEn" class="on">EN</button><button id="langEs">ES</button></div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="globe-pane" aria-label="3D globe">
+      <div id="globe"></div>
+      <div class="globe-hud hud-tl">
+        <div class="month-display">
+          <div class="lbl" id="hudArea">World</div>
+          <div class="big" id="hudMonth">—</div>
+          <div class="sub" id="hudValue"></div>
+        </div>
+      </div>
+      <div class="globe-hud hud-tr">
+        <button class="glass hud-btn on" id="btnRotate" data-i18n-title="rotate" title="Auto-rotate" aria-label="Auto-rotate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+        <button class="glass hud-btn on" id="btnClouds" data-i18n-title="clouds" title="Clouds" aria-label="Clouds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></svg></button>
+        <button class="glass hud-btn" id="btnHome" data-i18n-title="home" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></button>
+        <div class="glass radius-ctl" id="radiusCtl"><span data-i18n="radius">Radius (km)</span>: <b id="radiusVal">150</b><input type="range" id="radiusRange" min="20" max="800" step="10" value="150" aria-label="Radius in km"></div>
+        <div class="glass legend-points">
+          <div class="pl-title" id="ptsTitle">What the columns show</div>
+          <div class="pl-body" id="ptsBody"></div>
+          <div class="ramp"></div>
+          <div class="ends"><span>1</span><span id="ptsMax">—</span></div>
+        </div>
+      </div>
+      <div class="globe-hint" id="globeHint" data-i18n="pickHint">Click anywhere on Earth to build its fire calendar</div>
+      <div class="globe-hud hud-bottom">
+        <div class="glass">
+          <div class="timeline">
+            <button class="play" id="btnPlay" aria-label="Play 25 years"><svg id="icoPlay" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></button>
+            <input type="range" id="timeRange" min="0" max="301" value="301" aria-label="Month">
+            <span class="t-label" id="timeLabel">—</span>
+          </div>
+          <div class="era-strip" id="eraStrip"></div>
+          <div class="era-legend" id="eraLegend"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="card reveal" id="overview">
+        <div class="aoi-head">
+          <div class="kicker" id="aoiKicker">Global record</div>
+          <h2 id="aoiName">World</h2>
+          <div class="meta" id="aoiMeta"></div>
+        </div>
+        <p class="insight" id="insight" aria-live="polite"></p>
+        <div class="kpis">
+          <div class="kpi"><div class="k" data-i18n="kSel">Selected month</div><div class="v" id="kpiSel">—</div><div class="s" id="kpiSelSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kMed">Historical median</div><div class="v" id="kpiMed">—</div><div class="s" id="kpiMedSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kAnom">Anomaly vs median</div><div class="v" id="kpiAnom">—</div><div class="s" id="kpiAnomSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kRank">Rank among years</div><div class="v" id="kpiRank">—</div><div class="s" id="kpiRankSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kBurn">Burned area (ha)</div><div class="v" id="kpiBurn">—</div><div class="s" id="kpiBurnSub"></div></div>
+        </div>
+        <div class="chips" id="presetChips"></div>
+      </div>
+
+      <div class="card reveal" id="calendarSec">
+        <div class="card-head">
+          <div>
+            <span class="section-no">01</span>
+            <h2 data-i18n="calTitle">Burning activity calendar</h2>
+            <p class="desc" data-i18n="calDesc"></p>
+          </div>
+        </div>
+        <div class="controls" style="margin-bottom:14px">
+          <div class="seg" role="group" aria-label="Color mode"><button id="mCounts" class="on" data-i18n="counts">Hotspots</button><button id="mAnom" data-i18n="anomaly">Anomaly vs median</button></div>
+          <div class="seg" role="group" aria-label="Series"><button id="vHarm" class="on" data-i18n="harmonized">Harmonized</button><button id="vNaive" data-i18n="naive">Naive splice</button></div>
+          <select id="baseSel" class="btn" aria-label="Baseline"><option value="viirs" data-i18n="baseViirs">2012–2025 · VIIRS observed</option><option value="full" data-i18n="baseFull">2003–2025 · full record</option></select>
+        </div>
+        <div class="legend" id="legend"></div>
+        <div class="cal-scroll"><div id="calendar"></div></div>
+        <p class="partial-note" id="partialNote"></p>
+        <div class="downloads">
+          <button class="btn primary" id="dlCal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i18n="csvCal">Calendar CSV</span></button>
+          <button class="btn" id="dlSeries"><span data-i18n="csvSeries">Monthly series CSV</span></button>
+          <button class="btn" id="dlPng"><span data-i18n="png">Calendar PNG</span></button>
+          <button class="btn ghost" id="btnShare"><span data-i18n="share">Copy link</span></button>
+        </div>
+      </div>
+
+      <div class="charts-wrap reveal" id="seasonSec">
+        <div class="charts-row">
+          <div class="card"><span class="section-no">02</span><h2 data-i18n="seasonalTitle">Seasonal profile vs historical median</h2><p class="desc" data-i18n="seasonalDesc"></p><div class="chart" id="chSeasonal"></div></div>
+          <div class="card"><span class="section-no">03</span><h2 data-i18n="annualTitle">Annual totals and the 2012 sensor jump</h2><p class="desc" data-i18n="annualDesc"></p><div class="chart" id="chAnnual"></div></div>
+        </div>
+      </div>
+
+      <div class="card reveal" id="validation">
+        <span class="section-no">04</span>
+        <h2 data-i18n="valTitle">Validation lab</h2>
+        <p class="desc" data-i18n="valDesc" style="margin-bottom:18px"></p>
+        <div class="metrics" id="metrics"></div>
+        <div class="charts-row">
+          <div><h3 class="desc" style="color:var(--text);font-weight:500;margin:0" data-i18n="scatterTitle">Predicted vs observed, country-months</h3><div class="chart tall" id="chScatter"></div><p class="desc" id="pairsNote"></p></div>
+          <div><h3 class="desc" style="color:var(--text);font-weight:500;margin:0" data-i18n="driftTitle">MODIS shutdown simulator</h3><p class="desc" data-i18n="driftDesc"></p><div class="chart" id="chDrift"></div></div>
+        </div>
+      </div>
+
+      <div class="card reveal method" id="method">
+        <span class="section-no">05</span>
+        <h2 data-i18n="methodTitle">How FireSync harmonizes MODIS and VIIRS</h2>
+        <div data-lang="en">
+          <p>MODIS (Terra 2000–, Aqua 2002–) holds the long fire record but is retiring. VIIRS (Suomi NPP 2012–2026, NOAA-20 2018–, NOAA-21 2024–) sees roughly 4–6 times more hotspots by day and far more at night, thanks to its 375 m pixels. Gluing the two raw records together fakes a fire explosion in 2012. FireSync builds one consistent record in <b>VIIRS-equivalent hotspots</b>:</p>
+          <ol>
+            <li><b>Common filters.</b> Keep FIRMS <code>type = 0</code> (presumed vegetation fire); volcanoes, static industrial sources and offshore flares are removed, and a static-source mask built from the archive does the same for near-real-time data, which has no <code>type</code> field. Keep MODIS confidence ≥ 30 and VIIRS nominal or high confidence. Low confidence is dropped everywhere, so the South Atlantic Anomaly filter that FIRMS applies only to near-real-time data cannot create a break.</li>
+            <li><b>Reference-satellite chain.</b> One satellite defines each month: Terra (Nov 2000–Jun 2002), then Aqua (Jul 2002–Jan 2012), Suomi NPP (Feb 2012–Oct 2026) and NOAA-20 (from Nov 2026). Satellites are never summed, so adding or losing one cannot inflate the counts.</li>
+            <li><b>Stratified calibration.</b> For every country × calendar month × day/night stratum, a ratio factor is fitted on the overlap: Aqua vs Suomi NPP 2012–2021, Terra vs Suomi NPP 2012–2019 and NOAA-20 vs Suomi NPP 2018–2025. Thin strata are shrunk toward the country factor and then the global factor (k = 30 pseudo-detections), so small regions stay stable.</li>
+            <li><b>Uncertainty.</b> Reconstructed months carry a likely range, taken from the interquartile range of the yearly ratios in their stratum.</li>
+            <li><b>Blind validation.</b> Factors fitted on 2012–2017 predict 2018–2021 from Aqua alone. The errors are published above, next to those of a single global factor.</li>
+            <li><b>Anomalies.</b> Each month is compared with the median of the same calendar month over a baseline (default 2012–2025, observed VIIRS only), excluding the year being evaluated, and ranked among all years.</li>
+          </ol>
+          <p>Aggregation: every FIRMS detection since November 2000 (48 yearly global archives plus the 2026 API record) is binned to a 0.25° grid by country, month, satellite and day/night. Country calendars are exact sums. Custom areas sum the 0.25° cells whose centre falls inside the circle.</p>
+        </div>
+        <div data-lang="es" hidden>
+          <p>MODIS (Terra desde 2000, Aqua desde 2002) tiene el registro largo de fuego pero se está retirando. VIIRS (Suomi NPP 2012–2026, NOAA-20 desde 2018, NOAA-21 desde 2024) ve entre 4 y 6 veces más focos de día y muchísimos más de noche, gracias a sus píxeles de 375 m. Pegar los dos registros crudos inventa una explosión de fuego en 2012. FireSync arma un único registro en <b>focos equivalentes VIIRS</b>:</p>
+          <ol>
+            <li><b>Filtros comunes.</b> Se conserva <code>type = 0</code> de FIRMS (fuego de vegetación presunto) y se quitan volcanes, fuentes industriales fijas y antorchas offshore. Para los datos casi en tiempo real, que no traen el campo <code>type</code>, una máscara de fuentes fijas armada con el archivo hace lo mismo. MODIS se usa con confianza ≥ 30 y VIIRS con confianza nominal o alta. La confianza baja se descarta en toda la serie, así el filtro de la Anomalía del Atlántico Sur que FIRMS aplica solo al NRT no genera un quiebre.</li>
+            <li><b>Cadena de satélites de referencia.</b> Un satélite define cada mes: Terra (nov 2000–jun 2002), después Aqua (jul 2002–ene 2012), Suomi NPP (feb 2012–oct 2026) y NOAA-20 (desde nov 2026). Nunca se suman satélites, así que sumar o perder uno no infla los conteos.</li>
+            <li><b>Calibración estratificada.</b> Para cada estrato país × mes calendario × día/noche se ajusta un factor de cociente en el solapamiento: Aqua vs Suomi NPP 2012–2021, Terra vs Suomi NPP 2012–2019 y NOAA-20 vs Suomi NPP 2018–2025. Los estratos con pocos datos se contraen hacia el factor del país y después hacia el global (k = 30 pseudo-detecciones), así las regiones chicas quedan estables.</li>
+            <li><b>Incertidumbre.</b> Los meses reconstruidos llevan un rango probable, tomado del rango intercuartil de los cocientes anuales de su estrato.</li>
+            <li><b>Validación ciega.</b> Factores ajustados en 2012–2017 predicen 2018–2021 solo con Aqua. Los errores se publican arriba, junto a los de un factor global único.</li>
+            <li><b>Anomalías.</b> Cada mes se compara con la mediana del mismo mes calendario en un período base (por defecto 2012–2025, solo VIIRS observado), sin contar el año evaluado, y se ubica en el ranking de todos los años.</li>
+          </ol>
+          <p>Agregación: cada detección de FIRMS desde noviembre de 2000 (48 archivos globales anuales más el registro 2026 de la API) se agrupa en una grilla de 0,25° por país, mes, satélite y día/noche. Los calendarios por país son sumas exactas. Las zonas propias suman las celdas de 0,25° cuyo centro cae dentro del círculo.</p>
+        </div>
+        <p class="sources"><b>Sources.</b> NASA FIRMS country archives (MODIS MCD14ML Collection 6.1/6.2; VIIRS 375 m VNP14IMG and VJ114IMG V002) and the FIRMS area API for 2026 (standard and near-real-time products), firms.modaps.eosdis.nasa.gov. Burned area: MODIS MCD64A1 Collection 6.1 (NASA LP DAAC), accessed through Microsoft Planetary Computer. Place names and boundaries: © OpenStreetMap contributors (Nominatim). NASA Blue Marble imagery via the three-globe examples. Libraries: three.js, globe.gl, Apache ECharts. We acknowledge the use of data and imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Earth Science Data and Information System (ESDIS).</p>
+        <div class="banner" id="banner"></div>
+      </div>
+      <footer data-i18n="footer"></footer>
+    </section>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="tooltip"></div>
+  <div class="toast" id="toast"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
