@@ -3,6 +3,8 @@
 **NASA Space Apps Challenge 2026 · Challenge: Harmonization of MODIS and VIIRS Hot Spots**
 Team: Jano, Mel, Siro, Yuri and Valen (Argentina)
 
+**Live app: https://zzzjanozzz.github.io/FireSync/** · Demo case: [Chilecito, July 2026](https://zzzjanozzz.github.io/FireSync/#p=-29.180,-67.640,40&t=2026-07)
+
 MODIS has watched Earth's fires since 2000, and it is retiring. VIIRS, its successor, sees fires differently: smaller pixels (375 m vs 1 km) and far better night sensitivity, so it detects roughly 4–6 times more hotspots by day and many times more at night. Glue the two raw records together and you get a fake fire explosion in 2012. FireSync rebuilds one consistent, validated record of hotspot activity from November 2000 to the present, for any place on Earth, and turns it into a burning activity calendar that emergency managers can read in seconds.
 
 ## What it does

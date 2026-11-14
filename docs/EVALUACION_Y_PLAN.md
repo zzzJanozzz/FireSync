@@ -156,6 +156,8 @@ Roles: **R1 Datos y pipeline · R2 Ciencia y validación · R3 Globo y frontend 
 - **Globo en GPU sin trabas.**
 - **Demo:** Chilecito en julio de 2026 da 243 focos, +3.140 % sobre la mediana, #1 en 26 años, y unas 11.790 ha quemadas.
 
+**Publicado a las 04:30:** el repo está en https://github.com/zzzJanozzz/FireSync y la app en https://zzzjanozzz.github.io/FireSync/. Cada push a `main` la vuelve a publicar sola.
+
 **Pendiente, por prioridad:**
 
 1. **MAP_KEY de FIRMS** (gratis, se pide con un email en https://firms.modaps.eosdis.nasa.gov/api/map_key/). Con ella se ingiere 2026: la API da 5 días por llamada y el mes de julio de Chilecito sale de ahí. Hay que sumar el comando de ingesta al pipeline: las filas de la API no traen país, así que se asigna con la celda dominante histórica.

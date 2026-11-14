@@ -5,6 +5,10 @@
 ## Project name
 FireSync: the continuity engine for Earth's fire record
 
+## Final project link
+- App: https://zzzjanozzz.github.io/FireSync/
+- Code and method: https://github.com/zzzJanozzz/FireSync
+
 ## High-level summary (≈ 150 words)
 NASA's MODIS has recorded Earth's fires since 2000 and is now retiring. Its successor, VIIRS, sees fires differently: smaller pixels and better night sensitivity mean 4–6 times more hotspots by day and far more at night. Gluing the two raw records together fakes a fire explosion in 2012, and fire managers lose a consistent 25-year history exactly when they need it most. FireSync processes all 556 million NASA FIRMS detections since November 2000 (plus the 2026 record through the FIRMS API). It harmonizes them with a stratified, validated calibration into one record of *VIIRS-equivalent hotspots*, and turns it into a burning activity calendar for any place on Earth. In a blind hindcast it cuts the error of the usual single-factor approach by 36%. Users pick a country or click anywhere on a 3D globe, see which months and years burned most, compare the current month with the historical median, and download the data.
 
