@@ -130,14 +130,130 @@ Revisé los repositorios públicos del mismo reto (Space Apps 2026, *Harmonizati
 
 ---
 
-## 4. Preguntas para el equipo
+## 4. Segunda ronda (sábado 14, tarde-noche): rendimiento, mapa 2D y revisión de jurado
 
-Están al final del mensaje de Claude y repetidas acá para que no se pierdan.
+### 4.1 El lag: causa y arreglo
 
-1. **Git y deploy.** Los cambios están en la copia del Escritorio y no se commitearon. ¿Los commiteo y hago push a `main`? (Eso republica GitHub Pages.) ¿O prefieren revisarlos primero?
-2. **Pendrive.** ¿Copio la versión nueva a `D:\FireSync`? Hoy el pendrive tiene la versión de la mañana.
-3. **Cloudflare.** ¿Conectan el repo desde el panel (opción A de la guía) o lo subo con `wrangler` desde esta laptop? Para cualquiera de las dos hace falta que inicien sesión ustedes.
-4. **Color por actividad en el mundo.** En la vista mundial los países se pintan además de las columnas. ¿Lo dejamos prendido por defecto o solo desde el nivel país?
-5. **Preset de la demo.** ¿Cambio "Chilecito · AR" del círculo de 40 km al departamento Chilecito (geoBoundaries)? Es más fácil de explicar en el video.
-6. **Validez.** ¿Sumo ahora la sección *Limitaciones* y la prueba ciega 2026 (NOAA-20 contra Suomi NPP) en el Validation lab? Es lo que más puntos suma en Validity.
-7. **Google Maps.** ¿Quieren de todas formas un botón "Abrir en Google Maps" para el área elegida? No necesita API key.
+La capa de regiones de la primera ronda usaba la capa de polígonos de la librería del globo. Cada país, provincia y municipio era una malla 3D aparte, y en cada movimiento del mouse la librería buscaba qué malla estaba debajo del cursor. Con Minas Gerais abierto había más de 2.000 mallas.
+
+Ahora la capa está reescrita:
+
+- **Bordes:** todos los bordes de un nivel son una sola malla de líneas.
+- **Relleno:** el color por actividad se pinta en una textura sobre un parche de la esfera.
+- **Hover y clic:** se resuelven con una cuenta geométrica en CPU (rayo contra esfera y punto dentro del polígono), sin consultar a la GPU.
+
+Medido con Chrome y GPU real, antes y después, en la misma laptop:
+
+| Vista | Antes | Ahora | Llamadas de dibujo ahora |
+|---|---|---|---|
+| Mundo | 147 ms por frame (7 fps) | 16,7 ms (60 fps) | 8 |
+| Brasil con 27 estados, moviendo el mouse | 222 ms (4,5 fps) | 16,7 ms (60 fps) | 25 |
+| Minas Gerais con 853 municipios, moviendo el mouse | 459 ms (2 fps) | 16,7 ms (60 fps) | 21 |
+| Sakha (Rusia) | sin medir | 16,7 ms (60 fps) | 28 |
+
+En pantalla de celular (390 px) da los mismos 60 fps. No pude medirlo en un teléfono físico: la medición es en esta laptop con tamaño de pantalla de celular.
+
+Otros ajustes de rendimiento:
+
+- El globo deja de dibujar cuando no está en pantalla (en celular, al bajar al calendario) y mientras se usa el mapa 2D.
+- Arrastrar la línea de tiempo mueve solo el mapa y el marcador del calendario. Los gráficos, el ranking y el área quemada se recalculan cuando se suelta.
+- En pantallas de alta densidad se apaga el antialiasing y se limita la resolución del globo.
+
+### 4.2 Qué se agregó
+
+| Pedido | Qué se hizo |
+|---|---|
+| Mapa 2D | Switch **Globo 3D / Mapa 2D**. Arranca en 3D. El 2D comparte regiones, focos, selección, círculo, time-lapse y enlace compartible (`v=2d`). Tiene zoom con rueda, pellizco y botones +/− |
+| Selección región / círculo | Botones más grandes con ícono. En modo círculo se ve el círculo siguiendo al cursor antes de hacer clic, y su radio inicial se ajusta al zoom (ya no aparece como un punto). Panel de radio con valores rápidos (50, 100, 250, 500, 1000 km). Al volver a Regiones con un círculo puesto, se abre el país donde estaba el círculo |
+| Sacar o cambiar la selección | Botones **Volver** (un nivel arriba) y **Quitar** junto al nombre del área. La tecla Esc también sube un nivel |
+| Tarjeta del cursor | Ya no sigue al mouse. La lectura (tipo, nombre, focos del mes, anomalía) queda fija en la esquina superior izquierda |
+| Zoom al elegir | El encuadre se calcula con el contorno del territorio principal (sin islas lejanas) y el tamaño del panel. Brasil pasó de altura 1,77 a 0,92; Argentina, de 1,52 a 0,75 |
+| NavBar | Marca con 12 celdas (un mini calendario) que se encienden al cargar y al pasar el mouse. Secciones numeradas con una línea que se desliza a la sección que se está leyendo. Línea de progreso de lectura. Indicador "Datos hasta el 14 nov 2026". El buscador se expande al enfocarlo y se abre con la tecla `/`. En celular queda en dos filas ordenadas |
+| Calendario primero | El calendario quedó como sección 01, justo después del resumen. Arriba tiene cuatro datos que responden la pregunta del reto: mes pico del registro, año más activo, temporada habitual y veredicto del mes elegido. La columna de totales es además un gráfico de barras, y la fila de medianas va coloreada con la misma rampa |
+| Validez | Sección **Limitaciones** (7 puntos, EN y ES) y **chequeo del relevo** con datos que el ajuste nunca vio (ver 4.4) |
+
+### 4.3 Bugs encontrados y corregidos
+
+| Bug | Efecto | Arreglo |
+|---|---|---|
+| Área quemada inflada en áreas grandes | Brasil, septiembre de 2024: 51 millones de ha (6 % del país). El servicio leía versiones reducidas de la imagen, que agrandan la proporción quemada | Se consulta en bloques de 6° a resolución completa. Ahora da unos 9,6 millones de ha (1,1 %), del mismo orden que los cerca de 10 millones de ha que informó MapBiomas para ese mes (verificar la cifra antes de citarla). Chilecito no cambia (unas 11.800 ha). En países gigantes (Rusia, Canadá) avisa que hay que elegir una provincia |
+| El globo quedaba tapado por la barra superior en anchos intermedios | La barra pasaba a dos filas y el globo no bajaba | La altura de la barra se mide y se usa para ubicar el globo |
+| Etiquetas superpuestas en los gráficos de validación | El título del eje se cortaba y la leyenda pisaba la marca de "deriva orbital" | Reubicadas |
+| "Zona cerca de Argentina" salía con el nombre del país en inglés | Mezcla de idiomas en español | Usa el nombre traducido |
+| El enlace compartible no guardaba el departamento | Al compartir Chilecito se abría La Rioja | El enlace ahora llega hasta el departamento |
+| Cabecera en celular | "Lat / Lon" en dos renglones y el botón ES cortado | Dos filas: marca e idioma arriba; buscador, Mundo y Lat/Lon abajo |
+
+La cifra de área quemada de La Rioja en julio de 2026 pasó de unas 12.350 ha a unas **11.350 ha** con la lectura a resolución completa. Ya está corregida en el texto de la entrega.
+
+### 4.4 Chequeo del relevo (dato nuevo para Validity)
+
+Octubre de 2026 es el único mes completo en que Suomi NPP y NOAA-20 están los dos en el registro de 2026. Los factores de NOAA-20 se ajustaron con 2018–2025, así que ese mes es una prueba con datos sin tocar:
+
+- 138 países con al menos 20 focos.
+- Error absoluto mediano: **7,7 %**.
+- Sesgo total: **+3,8 %**.
+- 64 % de los países dentro de ±10 % y 80 % dentro de ±20 %.
+
+Es un solo mes y son datos casi en tiempo real. La app lo dice así, sin adornarlo. Se regenera con `node scripts/handover_check.mjs web/data`.
+
+### 4.5 Puntaje de jurado actualizado
+
+| Criterio | Ronda 1 | Ahora | Por qué |
+|---|---|---|---|
+| Impact | 5 | 5 | Global hasta el departamento, y ahora usable en máquinas lentas |
+| Creativity | 5 | 5 | Globo y mapa regionalizados, ranking, time-lapse anclado |
+| Validity | 4 | 4,5 | Suma limitaciones y una prueba con datos sin tocar. Falta validar a nivel provincia (heredan el factor del país) |
+| Relevance | 5 | 5 | El calendario es lo primero que se ve y responde la pregunta del reto en una línea |
+| Presentation | 4 | 4 | Sigue faltando el video de 30 s. Es el punto con más margen |
+| **Total** | 23 | **23,5** | Con un buen video: 24 a 24,5 |
+
+### 4.6 La subjetividad del jurado y la chance real de estar entre los 10 globales
+
+Esto es una estimación de criterio, no un dato. Nadie puede calcularla.
+
+**Cómo es el camino.** Jurado local → Global Nominee → unas decenas de finalistas → 10 ganadores. Cada paso lo decide gente distinta, con criterios distintos.
+
+**Qué pesa en cada etapa:**
+
+- **Jurado local.** Suele haber personas que no son especialistas en fuego. Pesa mucho que entiendan el problema en un minuto, que la demo funcione en vivo y la seguridad con que respondan preguntas. Un jurado puede premiar al equipo más joven, al más "social" o al que mejor habla, por encima del método.
+- **Jurado global.** Ve cientos de proyectos y lo único que seguro mira son el **video de 30 segundos** y la página de entrega. Muchos no abren la app. Si la abren, es un minuto y tal vez desde el celular.
+- **Los 10 premios son por categoría**, no un ranking único: Best Use of Data, Best Use of Science, Galactic Impact, Local Impact, Best Use of Technology, Most Inspirational, Art & Technology, entre otros. Un proyecto gana porque es el mejor ejemplo de *una* categoría.
+
+**Lo que juega a favor:**
+
+- El reto lo escribió CONAE y el caso de demostración (Chilecito) es argentino y aparece en el video del reto. Eso da una historia propia que otros equipos no tienen.
+- Es el único proyecto del reto que baja hasta el departamento en todo el mundo, con error publicado y limitaciones a la vista.
+- El producto está terminado y publicado: un juez puede usarlo de verdad.
+
+**Lo que juega en contra:**
+
+- El reto es de nicho. Entre 2023 y 2025 ningún proyecto de fuego ganó un premio global.
+- SHIFT y Fire Harmony son rivales serios dentro del mismo reto, y puede haber otros que no publicaron el código.
+- El código lo escribió casi todo una IA. Está declarado, como exige el reglamento, pero un jurado puede valorar menos al equipo por eso. Tienen que poder explicar el método con sus palabras.
+- Sin un video muy claro, el trabajo no se ve.
+
+**Estimación honesta:**
+
+| Etapa | Chance estimada | De qué depende |
+|---|---|---|
+| Ganar o ser nominado en el evento local | Alta: 60 a 80 % | Que la demo en vivo salga bien y que expliquen el método sin leer |
+| Finalista global | Posible pero difícil: 10 a 20 % | El video de 30 s y la página de entrega |
+| Uno de los 10 ganadores | Baja: 2 a 5 % | Encajar como el mejor ejemplo de una categoría (Best Use of Data o Local Impact) y algo de suerte |
+
+Un 2 a 5 % parece poco, pero el punto de partida de un proyecto cualquiera es mucho menor que 1 %. Lo que más mueve la aguja de acá al domingo no es más código: es el **video**, la **historia de Chilecito contada en 30 segundos** y **practicar las respuestas** a las preguntas del jurado.
+
+**Preguntas que les van a hacer (practíquenlas):**
+
+1. ¿Por qué no alcanza con multiplicar MODIS por un número?
+2. ¿Cómo saben que su método funciona? (Respuesta: hindcast ciego, 22,8 % contra 35,7 %, y el chequeo de octubre de 2026.)
+3. ¿Qué no puede hacer su herramienta? (Respuesta: las limitaciones.)
+4. ¿Qué parte hicieron ustedes y qué parte la IA?
+5. ¿Quién lo usaría mañana y para qué?
+
+## 5. Preguntas para el equipo
+
+1. **Publicar.** Los cambios de esta ronda están en la laptop, sin commit. ¿Hago commit y push a `main`? Eso actualiza la versión pública.
+2. **Preset de la demo.** ¿Cambio "Chilecito · AR" (círculo de 40 km) por el departamento Chilecito? Da +1.508 % y es más fácil de explicar.
+3. **Color por actividad en la vista mundial.** ¿Lo dejamos prendido por defecto o solo desde el nivel país?
+4. **Librerías propias.** ¿Paso three.js, globe.gl y ECharts a nuestro dominio? Hoy dependen de jsDelivr, y si la red del jurado lo bloquea no carga nada. Lleva una hora.
+5. **Presentación.** Cuando me den el OK empiezo el PPT. Necesito saber: ¿cuántos minutos tienen frente al jurado local?, ¿en qué idioma presentan?, ¿quién habla?

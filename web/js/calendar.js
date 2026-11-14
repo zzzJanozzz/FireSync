@@ -71,6 +71,7 @@ export class Calendar {
     const medAll = byMonth.map(a => median(a.map(o => o.v)));
     const scale = logScale(values, n);
     let i = 0;
+    const tots = [];
     for (let y = lastYear; y >= firstYear; y--) {
       let tot = 0, complete = true;
       for (let m = 0; m < 12; m++, i++) {
@@ -102,10 +103,20 @@ export class Calendar {
       }
       const te = this.totEls.get(y);
       te.textContent = compact(tot) + (complete ? '' : '*');
+      tots.push([te, tot]);
       const ye = this.yearEls.get(y);
       ye.classList.toggle('sel', selT != null && yearOf(selT) === y);
     }
-    this.footEls.forEach((el, m) => { el.textContent = compact(medAll[m]); });
+    // Year totals double as a bar chart: which years had the most fire, at a glance.
+    const maxTot = Math.max(1, ...tots.map(x => x[1]));
+    for (const [te, tot] of tots) te.style.setProperty('--w', `${((100 * tot) / maxTot).toFixed(1)}%`);
+    // The median row is coloured with the same ramp: the usual fire season of this place.
+    this.footEls.forEach((el, m) => {
+      el.textContent = compact(medAll[m]);
+      const x = scale(medAll[m]), bg = x < 0 ? '#0d1424' : inferno(0.04 + 0.96 * x);
+      el.classList.add('heat');
+      el.style.background = bg; el.style.color = textOn(bg);
+    });
     this.selT = selT;
     this.selMonth = selT != null ? monthOf(selT) : 7;
     const sel = this.cells.get(selT);

@@ -19,6 +19,7 @@ export const getMeta = () => getJSON('meta.json');
 export const getCountries = () => getJSON('countries.json');
 export const getFactors = () => getJSON('factors.json');
 export const getValidation = () => getJSON('validation.json');
+export const getHandover = () => getJSON('handover.json');
 
 function naiveFrom(cal, n) {
   const out = new Float64Array(n);
@@ -247,7 +248,43 @@ export function countryBoundary(name) {
 
 // ------------------------------------------------------------ burned area (MODIS MCD64A1, Planetary Computer)
 // Burned hectares = (burned 500 m pixels / valid pixels inside the shape) x geodesic area of the shape.
+// The statistics service shrinks any request wider than max_size pixels by reading image overviews, and the
+// overviews of a burn mask inflate the burned share (Brazil, September 2024: 6% of the country instead of 1.3%).
+// So the shape is cut into boxes small enough to be read at full resolution, every box is sent to each MODIS
+// tile it touches, and each box contributes its own burned share times its own area.
 const PC = 'https://planetarycomputer.microsoft.com/api';
+const TILE_M = 1111950.5197, R_SIN = 6371007.181, RAD = Math.PI / 180;
+function modisTile(lon, lat) {
+  const x = R_SIN * lon * RAD * Math.cos(lat * RAD), y = R_SIN * lat * RAD;
+  const h = Math.max(0, Math.min(35, Math.floor((x + 18 * TILE_M) / TILE_M))), v = Math.max(0, Math.min(17, Math.floor((9 * TILE_M - y) / TILE_M)));
+  return `h${String(h).padStart(2, '0')}v${String(v).padStart(2, '0')}`;
+}
+// Sutherland-Hodgman clip of a closed ring against a longitude / latitude box.
+function clipRing(ring, w, s, e, n) {
+  let pts = ring.slice(0, -1);
+  for (const [ax, val, sg] of [[0, w, 1], [0, e, -1], [1, s, 1], [1, n, -1]]) {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+      const in1 = sg * (p1[ax] - val) >= 0, in2 = sg * (p2[ax] - val) >= 0;
+      if (in1) out.push(p1);
+      if (in1 !== in2) { const t = (val - p1[ax]) / (p2[ax] - p1[ax]); out.push([p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]); }
+    }
+    pts = out;
+    if (pts.length < 3) return null;
+  }
+  pts.push(pts[0]);
+  return pts;
+}
+function clipGeom(geom, w, s, e, n) {
+  const polys = [];
+  for (const poly of polygonsOf(geom)) {
+    const outer = clipRing(poly[0], w, s, e, n);
+    if (!outer) continue;
+    polys.push([outer, ...poly.slice(1).map(h => clipRing(h, w, s, e, n)).filter(Boolean)]);
+  }
+  return polys.length ? { type: 'MultiPolygon', coordinates: polys } : null;
+}
 const baCache = new Map();
 export function burnedArea(aoiId, geom, areaHa, t) {
   const key = `${aoiId}|${t}`;
@@ -256,26 +293,49 @@ export function burnedArea(aoiId, geom, areaHa, t) {
     const y = yearOf(t), m = monthOf(t) + 1;
     const start = `${y}-${String(m).padStart(2, '0')}-01T00:00:00Z`;
     const end = `${y}-${String(m).padStart(2, '0')}-27T23:59:59Z`;
-    const bbox = geomBBox(geom);
+    const [w, s, e, n] = geomBBox(geom);
+    // Boxes of 6 degrees (3 at high latitudes, where the sinusoidal grid is sheared) are read without downsampling.
+    const size = Math.max(Math.abs(s), Math.abs(n)) > 50 ? 3 : 6;
+    const nx = Math.max(1, Math.ceil((e - w) / size)), ny = Math.max(1, Math.ceil((n - s) / size));
+    const jobs = [], boxes = [];
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      const bw = w + ((e - w) * i) / nx, be = w + ((e - w) * (i + 1)) / nx, bs = s + ((n - s) * j) / ny, bn = s + ((n - s) * (j + 1)) / ny;
+      const part = nx * ny === 1 ? geom : clipGeom(geom, bw, bs, be, bn);
+      if (!part) continue;
+      const box = { ha: nx * ny === 1 ? areaHa : geomAreaHa(part), burned: 0, valid: 0 };
+      boxes.push(box);
+      const tiles = new Set();
+      for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) tiles.add(modisTile(bw + ((be - bw) * a) / 4, bs + ((bn - bs) * b) / 4));
+      for (const tile of tiles) jobs.push({ tile, part, box });
+    }
+    if (jobs.length > 150) return { status: 'toolarge' };
     const sr = await fetch(`${PC}/stac/v1/search`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collections: ['modis-64A1-061'], bbox, datetime: `${start}/${end}`, limit: 60 }),
+      body: JSON.stringify({ collections: ['modis-64A1-061'], bbox: [w, s, e, n], datetime: `${start}/${end}`, limit: 250 }),
     }).then(r => r.json());
-    const items = (sr.features || []).map(f => f.id);
-    if (!items.length) return { status: 'unavailable' };
-    const feature = { type: 'Feature', properties: {}, geometry: geom };
-    let burned = 0, valid = 0;
-    const results = await Promise.all(items.map(id => fetch(`${PC}/data/v1/item/statistics?collection=modis-64A1-061&item=${encodeURIComponent(id)}&assets=Burn_Date&histogram_range=1,367&histogram_bins=1&max_size=1024`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(feature),
-    }).then(r => (r.ok ? r.json() : null)).catch(() => null)));
-    for (const res of results) {
-      const st = res && res.properties && res.properties.statistics && Object.values(res.properties.statistics)[0];
-      if (!st) continue;
-      burned += (st.histogram && st.histogram[0] && st.histogram[0][0]) || 0;
-      valid += st.valid_pixels || 0;
-    }
-    if (!valid) return { status: 'unavailable' };
-    return { status: 'ok', ha: (burned / valid) * areaHa, fraction: burned / valid, tiles: items.length };
+    const items = new Map(); // tile -> newest item id
+    for (const f of sr.features || []) { const tile = (f.id.match(/h\d\dv\d\d/) || [])[0]; if (tile && (!items.has(tile) || f.id > items.get(tile))) items.set(tile, f.id); }
+    if (!items.size) return { status: 'unavailable' };
+    const todo = jobs.filter(j => items.has(j.tile));
+    let okCount = 0, next = 0;
+    const worker = async () => {
+      while (next < todo.length) {
+        const { tile, part, box } = todo[next++];
+        const res = await fetch(`${PC}/data/v1/item/statistics?collection=modis-64A1-061&item=${encodeURIComponent(items.get(tile))}&assets=Burn_Date&histogram_range=1,367&histogram_bins=1&max_size=2400`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'Feature', properties: {}, geometry: part }),
+        }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+        const st = res && res.properties && res.properties.statistics && Object.values(res.properties.statistics)[0];
+        if (!st) continue;
+        okCount++;
+        box.burned += (st.histogram && st.histogram[0] && st.histogram[0][0]) || 0;
+        box.valid += st.valid_pixels || 0;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(12, todo.length) }, worker));
+    if (!okCount) return { status: 'unavailable' };
+    let ha = 0;
+    for (const b of boxes) if (b.valid > 0) ha += (b.burned / b.valid) * b.ha;
+    return { status: 'ok', ha, fraction: areaHa > 0 ? Math.min(1, ha / areaHa) : 0, tiles: items.size, requests: todo.length };
   })().catch(() => ({ status: 'error' }));
   baCache.set(key, p);
   return p;

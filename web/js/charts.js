@@ -79,11 +79,11 @@ export function drawScatter(c, { validation, labels }) {
   const max = Math.max(...validation.scatter.map(r => Math.max(r[0], r[1], r[2])));
   c.setOption({
     animationDuration: 900,
-    grid: { left: 52, right: 14, top: 28, bottom: 40 },
+    grid: { left: 62, right: 14, top: 30, bottom: 40 },
     legend: { top: 0, right: 0, textStyle: { color: '#a49f94', fontSize: 11 }, data: [labels.engine, labels.naive] },
     tooltip: { ...TIP, trigger: 'item', formatter: p => `${labels.obs}: ${compact(p.value[0])}<br>${labels.pred}: ${compact(p.value[1])}` },
     xAxis: { type: 'log', name: labels.obs, nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: '#a49f94', fontSize: 11 }, min: 10, max, ...AXIS, axisLabel: { ...AXIS.axisLabel, formatter: v => compact(v) } },
-    yAxis: { type: 'log', name: labels.pred, nameTextStyle: { color: '#a49f94', fontSize: 11 }, min: 1, max, ...AXIS, axisLabel: { ...AXIS.axisLabel, formatter: v => compact(v) } },
+    yAxis: { type: 'log', name: labels.pred, nameLocation: 'middle', nameGap: 42, nameTextStyle: { color: '#a49f94', fontSize: 11 }, min: 1, max, ...AXIS, axisLabel: { ...AXIS.axisLabel, formatter: v => compact(v) } },
     series: [
       { name: labels.naive, type: 'scatter', data: nav, symbolSize: 3, itemStyle: { color: 'rgba(164,159,148,0.35)' } },
       { name: labels.engine, type: 'scatter', data: eng, symbolSize: 3.5, itemStyle: { color: 'rgba(232,89,12,0.7)' } },
@@ -96,15 +96,15 @@ export function drawDrift(c, { validation, labels, lang }) {
   const d = validation.drift;
   c.setOption({
     animationDuration: 900,
-    grid: { left: 52, right: 12, top: 28, bottom: 24 },
-    legend: { top: 0, right: 0, textStyle: { color: '#a49f94', fontSize: 11 }, data: [labels.obsViirs, labels.predAqua] },
+    grid: { left: 52, right: 12, top: 52, bottom: 24 },
+    legend: { top: 0, left: 0, orient: 'vertical', itemGap: 4, textStyle: { color: '#a49f94', fontSize: 11 }, data: [labels.obsViirs, labels.predAqua] },
     tooltip: { ...TIP, trigger: 'axis', valueFormatter: v => fmt(v, lang) },
     xAxis: { type: 'category', data: d.map(r => String(r.year)), ...AXIS },
     yAxis: { type: 'value', ...AXIS, axisLabel: { ...AXIS.axisLabel, formatter: v => compact(v) } },
     series: [
       { name: labels.obsViirs, type: 'bar', data: d.map(r => r.obs), barWidth: '55%', itemStyle: { color: 'rgba(130,169,212,0.55)', borderRadius: [1, 1, 0, 0] } },
       { name: labels.predAqua, type: 'line', data: d.map(r => r.pred), symbol: 'circle', symbolSize: 6, lineStyle: { color: '#e8590c', width: 2 }, itemStyle: { color: '#e8590c' },
-        markArea: { silent: true, itemStyle: { color: 'rgba(232,89,12,0.06)' }, label: { color: '#f3965a', fontSize: 10, fontFamily: 'IBM Plex Sans' }, data: [[{ name: labels.driftZone, xAxis: '2022' }, { xAxis: String(d[d.length - 1].year) }]] } },
+        markArea: { silent: true, itemStyle: { color: 'rgba(232,89,12,0.06)' }, label: { color: '#f3965a', fontSize: 10, fontFamily: 'IBM Plex Sans', position: 'insideTop', distance: 4 }, data: [[{ name: labels.driftZone, xAxis: '2022' }, { xAxis: String(d[d.length - 1].year) }]] } },
     ],
   }, true);
 }

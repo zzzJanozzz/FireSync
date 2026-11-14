@@ -3,7 +3,7 @@
 **NASA Space Apps Challenge 2026 · Challenge: Harmonization of MODIS and VIIRS Hot Spots**
 Team: Jano, Mel, Siro, Yuri and Valen (Argentina)
 
-**Live app: https://firesync.space** (mirror: https://zzzjanozzz.github.io/FireSync/) · Demo cases: [Chilecito, July 2026](https://firesync.space/#p=-29.180,-67.640,40&t=2026-07) · [La Rioja province, July 2026](https://firesync.space/#r=ARG~ARG-1302&t=2026-07)
+**Live app: https://firesync.space** (mirror: https://zzzjanozzz.github.io/FireSync/) · Demo cases: [Chilecito, July 2026](https://firesync.space/#p=-29.180,-67.640,40&t=2026-07) · [La Rioja province, July 2026](https://firesync.space/#r=ARG~ARG-1302&t=2026-07) · [Chilecito department, July 2026](https://firesync.space/#r=ARG~ARG-1302~61730980B21035116848731&t=2026-07)
 
 MODIS has watched Earth's fires since 2000, and it is retiring. VIIRS, its successor, sees fires differently: smaller pixels (375 m vs 1 km) and far better night sensitivity, so it detects roughly 4–6 times more hotspots by day and many times more at night. Glue the two raw records together and you get a fake fire explosion in 2012. FireSync rebuilds one consistent, validated record of hotspot activity from November 2000 to the present, for any place on Earth, and turns it into a burning activity calendar that emergency managers can read in seconds.
 
@@ -12,11 +12,12 @@ MODIS has watched Earth's fires since 2000, and it is retiring. VIIRS, its succe
 - **Global harmonized record.** All 556 million NASA FIRMS detections from 48 yearly global archives (MODIS 2000–2025, VIIRS Suomi NPP 2012–2025, VIIRS NOAA-20 2018–2025), expressed in *VIIRS-equivalent hotspots*.
 - **Every region on Earth.** Drill down on the globe from the world to a country, then to any of the **4,596 provinces and states on Earth** (Natural Earth admin-1), then to its departments, counties or districts (**49,038 units in ~180 countries**, geoBoundaries), every level with its own precomputed calendar. Three filters (country → province / state → department) do the same from the panel, and an instant search covers every province and state in the world plus OpenStreetMap towns. A circle mode analyzes any point with an adjustable radius, or a typed latitude and longitude.
 - **Where is it burning?** For the selected month, a ranking of countries (world view) or of the provinces / states of the chosen country, each compared with its own median, plus a choropleth on the globe with the same color ramp.
-- **Burned hectares.** For the selected area and month, FireSync queries the MODIS MCD64A1 burned-area product through Microsoft Planetary Computer. It reports burned hectares as the burned-pixel fraction × the geodesic area of the shape. Chilecito, July 2026: ≈ 11,800 ha, consistent with the 10,000–15,000 ha reported in the press.
+- **3D globe or 2D map.** The globe is the default view; a switch turns it into a flat map that shares the same regions, hotspots, selection and time-lapse, and is lighter on slow machines and phones.
+- **Burned hectares.** For the selected area and month, FireSync queries the MODIS MCD64A1 burned-area product through Microsoft Planetary Computer. It reports burned hectares as the burned-pixel fraction × the geodesic area of the shape, read at full resolution in boxes of 6° so large areas are not inflated by image overviews (Brazil, September 2024: about 9.6 million ha). Chilecito, July 2026: ≈ 11,800 ha, consistent with the 10,000–15,000 ha reported in the press.
 - **Burning activity calendar.** A year × month heatmap with an accessible, perceptually uniform color ramp (inferno). It has an anomaly mode with a colorblind-safe diverging ramp, hatched cells wherever the value is reconstructed from MODIS, and era separators.
 - **Current vs historical.** For each month: the median of the same calendar month over a selectable baseline (excluding the year being evaluated), the anomaly in percent, the rank among all years, and a plain-language sentence.
 - **Honest uncertainty.** Reconstructed months carry a likely range from the interannual spread of the calibration ratios.
-- **Validation lab.** A blind hindcast: factors fitted on 2012–2017 predict 2018–2021 VIIRS counts from Aqua MODIS alone. It also includes a MODIS shutdown simulator that shows Aqua's orbit drift after 2022.
+- **Validation lab.** A blind hindcast: factors fitted on 2012–2017 predict 2018–2021 VIIRS counts from Aqua MODIS alone. A MODIS shutdown simulator shows Aqua's orbit drift after 2022. A hand-over check on untouched data compares NOAA-20 with Suomi NPP in October 2026, the only full month with both satellites in the 2026 record (138 countries: 7.7% median error, +3.8% total bias). A limitations section says what the record cannot tell.
 - **3D globe.** NASA Blue Marble imagery with relief, specular oceans, moving clouds and an atmosphere. Hotspot columns are GPU-instanced and ease smoothly from month to month. The globe shows the area outline and pulsing rings on its strongest cells. A time-lapse plays 25 years of fire with the camera anchored on the chosen area.
 - **Downloads.** The calendar matrix as CSV, the monthly series as CSV (harmonized value, likely range, provenance, reference satellite, raw counts) and the calendar as PNG. The app state lives in a shareable URL.
 - **English and Spanish** interface.
@@ -43,6 +44,7 @@ The full metrics (bias, log correlation, per-country errors) are in `web/data/va
 | `scripts/firms_zips.curlrc` | Download list of the 48 FIRMS yearly global archives |
 | `scripts/serve.ps1` | Zero-install local web server |
 | `scripts/build_regions.mjs` | Joins Natural Earth borders to the record: calendars of all 4,596 provinces / states, search index, country borders |
+| `scripts/handover_check.mjs` | NOAA-20 vs Suomi NPP on October 2026, written to `web/data/handover.json` |
 | `scripts/build_adm2.mjs` | Nests 49,038 geoBoundaries departments / counties in their province and builds their calendars (one file per province) |
 | `docs/DEPLOY_CLOUDFLARE.md` | Cloudflare Pages + firesync.space setup (Spanish) |
 | `docs/AUDITORIA_Y_JURADO.md` | Optimization audit and judge-style review (Spanish) |
@@ -70,6 +72,8 @@ node scripts\build_regions.mjs data\raw\ne web\data
 # 5b. Departments / counties: geoBoundaries gbOpen ADM2 catalog plus one simplified GeoJSON per country in data\raw\gb
 curl.exe -sS -o data\raw\gb\all_adm2.json https://www.geoboundaries.org/api/current/gbOpen/ALL/ADM2/
 node scripts\build_adm2.mjs data\raw\gb web\data mapshaper
+# 5c. Hand-over check (NOAA-20 vs Suomi NPP, October 2026)
+node scripts\handover_check.mjs web\data
 # 6. Serve
 powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 -Port 8080
 ```

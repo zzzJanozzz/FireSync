@@ -2,14 +2,15 @@
 import * as D from './data.js';
 import * as U from './util.js';
 import { Calendar } from './calendar.js';
-import { createGlobe } from './globe.js';
+import { createView } from './view.js';
+import { mainBBox, pickFeature } from './regions.js';
 import { createCharts, drawSeasonal, drawAnnual, drawScatter, drawDrift } from './charts.js';
 import { I18N, tpl } from './i18n.js';
 
 const $ = id => document.getElementById(id);
 const state = {
   lang: 'en', aoi: { kind: 'world', id: 'world', name: 'World' }, series: null, t: null,
-  mode: 'counts', view: 'harmonized', baseline: 'viirs', radiusKm: 150, playing: false, userRotate: true,
+  mode: 'counts', view: 'harmonized', baseline: 'viirs', radiusKm: 200, playing: false, userRotate: true, map: '3d',
   meta: null, countries: [], validation: null, medians: null, places: [],
   // Regionalization: click mode, choropleth fill, borders, the open country's provinces / states and their subdivisions.
   pickMode: 'region', fill: true, world: null, countriesH: null, regions: null, adm2: null, regionIndex: null,
@@ -43,22 +44,31 @@ async function boot() {
   state.meta = meta; state.countries = countries.sort((a, b) => b.total - a.total); state.validation = validation;
   initWorld(world);
   D.getCountriesH().then(h => { state.countriesH = h; refreshRegions(); renderRanking(); }).catch(() => {});
+  D.getHandover().then(h => { state.handover = h; if (charts) drawValidation(); }).catch(() => {});
   step(45, L().loadingGlobe);
-  globeApi = createGlobe($('globe'), { onPick: onOceanClick, onRegion: onRegionClick });
+  globeApi = createView({ el3d: $('globe'), el2d: $('map2d'), onHover: onViewHover, onClick: onViewClick });
   calendar = new Calendar($('calendar'), { onSelect: t => selectMonth(t), onHover: showTip });
   charts = createCharts({ seasonal: $('chSeasonal'), annual: $('chAnnual'), scatter: $('chScatter'), drift: $('chDrift') });
   setupUI();
   step(70, L().loading);
   const h = state.pendingHash;
   try {
-    if (h && h.r) await pickRegion(h.r[0], h.r[1], { t: h.t });
+    if (h && h.r) {
+      await pickRegion(h.r[0], h.r[1], { t: h.t });
+      if (h.r[2]) {
+        await state.adm2Ready;
+        const f = state.adm2 && state.adm2.features.find(x => String(x.id) === h.r[2]);
+        if (f) await pickSub(f, { t: h.t });
+      }
+    }
     else if (h && h.p) await pickCircle(h.p[0], h.p[1], h.p[2], { t: h.t });
     else if (h && h.c != null && countries.find(c => String(c.id) === String(h.c))) await pickCountry(countries.find(c => String(c.id) === String(h.c)), { t: h.t });
     else await pickWorld({ t: h && h.t });
   } catch (e) { console.error(e); await pickWorld({}); }
   drawValidation();
   step(100, L().ready);
-  setTimeout(() => $('intro').classList.add('done'), 300);
+  if (h && h.v === '2d') setMapView('2d');
+  setTimeout(() => { $('intro').classList.add('done'); document.body.classList.add('ready'); }, 300);
   const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.06 });
   document.querySelectorAll('.reveal').forEach(el => io.observe(el));
   setTimeout(() => { $('globeHint').style.opacity = '0'; }, 9000);
@@ -173,43 +183,58 @@ function restyleRegions() {
   const unitMax = state.regions ? scaleOf(state.regions) : 1;
   const ctyMax = state.countriesH ? scaleOf(state.countriesH) : 1;
   const subMax = state.adm2 && state.adm2.H ? scaleOf(state.adm2) : 1;
+  // The selected province / department stays clear so its own hotspots read well.
   const selected = a.kind === 'region' ? a.uid : a.kind === 'sub' ? `s:${a.sid}` : null;
   globeApi.styleRegions({
-    selected,
     fill: !state.fill ? null : f => {
-      if (f.kind === 'context') return null;
+      if (f.kind === 'context' || f.id === selected) return null;
       if (f.kind === 'unit' && a.kind === 'sub') return null;
       const arr = featSeries(f);
       if (!arr) return null;
       return fillColor(arr[t], f.kind === 'unit' ? unitMax : f.kind === 'sub' ? subMax : ctyMax);
     },
-    label: f => {
-      const mo = `${l.months[U.monthOf(t)]} ${U.yearOf(t)}`;
-      let title, kind;
-      if (f.kind === 'unit') { title = uName(f.unit); kind = uType(f.unit); }
-      else if (f.kind === 'sub') { title = f.sub.name; kind = adm2Kind(true); }
-      else { title = state.lang === 'es' ? f.name_es || f.name : f.name; kind = l.country; }
-      const st = seriesStats(featSeries(f), t);
-      const val = st ? `<div class="gt-r"><span>${mo}</span><b>${U.fmt(st.v, state.lang)}</b></div><div class="gt-r"><span>${l.tipAnom}</span><b>${isFinite(st.anom) ? U.pct(st.anom, state.lang) : '—'}</b></div>` : '';
-      const hint = state.pickMode === 'circle' ? l.tipCircle : f.kind === 'sub' ? l.tipOpen : f.kind === 'unit' ? l.tipOpen : l.tipDrill;
-      return `<div class="gtip"><div class="gt-k">${kind}</div><div class="gt-t">${title}</div>${val}<div class="gt-h">${hint}</div></div>`;
-    },
   });
+  renderHover();
 }
 
-function onOceanClick(lat, lng) {
-  if (state.playing) return;
-  if (state.pickMode === 'circle') pickCircle(lat, lng, state.radiusKm);
-  else toast(L().oceanHint);
+// Fixed readout of the region under the cursor (it sits in the corner, so it never covers the map).
+function renderHover() {
+  const box = $('hoverBox');
+  if (!box) return;
+  const f = state.hoverF, c = state.hoverC, l = L(), t = state.t ?? 0;
+  if (!f && !(c && state.pickMode === 'circle')) { box.classList.remove('on'); return; }
+  let kind, title, val = '', hint;
+  if (f) {
+    if (f.kind === 'unit') { title = uName(f.unit); kind = uType(f.unit); }
+    else if (f.kind === 'sub') { title = f.sub.name; kind = adm2Kind(true); }
+    else { title = state.lang === 'es' ? f.name_es || f.name : f.name; kind = l.country; }
+    const st = seriesStats(featSeries(f), t);
+    if (st) val = `${U.fmt(st.v, state.lang)} · ${isFinite(st.anom) ? U.pct(st.anom, state.lang) : l.newActivity}`;
+    hint = state.pickMode === 'circle' ? tpl(l.tipCircleR, { r: state.radiusKm }) : f.kind === 'country' || f.kind === 'context' ? l.tipDrill : l.tipOpen;
+  } else {
+    kind = l.kicker.circle; title = `${c.lat.toFixed(2)}°, ${c.lng.toFixed(2)}°`; hint = tpl(l.tipCircleR, { r: state.radiusKm });
+  }
+  $('hoverKind').textContent = kind;
+  $('hoverName').textContent = title;
+  $('hoverVal').textContent = val;
+  $('hoverHint').textContent = hint;
+  box.classList.add('on');
 }
-function onRegionClick(f, { lat, lng }) {
-  if (state.playing || !f) return;
-  if (state.pickMode === 'circle') { if (lat != null) pickCircle(lat, lng, state.radiusKm); return; }
+function onViewHover(f, c) {
+  const changed = f !== state.hoverF || (state.pickMode === 'circle' && !f);
+  state.hoverF = f; state.hoverC = c;
+  if (state.pickMode === 'circle') globeApi.setGhost(c && !state.playing ? D.circleGeom(c.lat, c.lng, state.radiusKm, 72).coordinates[0].map(([x, y]) => [y, x]) : null);
+  if (changed) renderHover();
+}
+function onViewClick(f, c) {
+  if (state.playing || !c) return;
+  if (state.pickMode === 'circle') return pickCircle(c.lat, c.lng, state.radiusKm);
+  if (!f) { toast(L().oceanHint); return; }
   if (f.kind === 'unit') return pickRegion(state.regions.a3, f.id, { t: state.t });
   if (f.kind === 'sub') return pickSub(f.sub, { t: state.t });
-  const c = f.fid != null ? countryByFid(f.fid) : null;
-  if (c) return pickCountry(c, { t: state.t });
-  return pickPlace({ name: f.name, full: f.name, type: 'country', lat, lon: lng, geom: f.geometry }, { t: state.t });
+  const cty = f.fid != null ? countryByFid(f.fid) : null;
+  if (cty) return pickCountry(cty, { t: state.t });
+  return pickPlace({ name: f.name, full: f.name, type: 'country', lat: c.lat, lon: c.lng, geom: f.geometry }, { t: state.t });
 }
 
 async function loadRegions(a3) {
@@ -221,13 +246,12 @@ async function pickWorld({ t } = {}) {
   state.aoi = { kind: 'world', id: 'world', name: L().world };
   state.adm2 = null;
   const s = await D.countrySeries('world');
-  globeApi.releaseAnchor();
   globeApi.setOutline([]);
   globeApi.clearFocus();
   $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
   refreshRegions();
   await setSeries(s, t);
-  globeApi.flyTo(-8, -45, 2.6, 1800);
+  globeApi.home();
   globeApi.setAutoRotate(state.userRotate);
   $('btnRotate').classList.toggle('on', state.userRotate);
 }
@@ -245,8 +269,8 @@ async function pickCountry(c, { t } = {}) {
   globeApi.hideContext();
   globeApi.setOutline(a.geom ? D.outlineRings(a.geom) : []);
   $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
-  const span = Math.max(c.bbox[2] - c.bbox[0], c.bbox[3] - c.bbox[1]);
-  globeApi.anchorTo(c.lat, c.lon, Math.max(0.95, Math.min(2.4, span / 22)), 1800);
+  // Frame the mainland (not far islands or overseas territories), close enough to click a province.
+  globeApi.focusBBox((wf && mainBBox(wf.geometry)) || c.bbox, { minAlt: 0.2, pad: 1.25, ms: 1700 });
   $('btnRotate').classList.remove('on');
   refreshRegions();
   await setSeries(s, t);
@@ -280,21 +304,20 @@ async function pickRegion(a3, uid, { t } = {}) {
   globeApi.hideContext();
   globeApi.setOutline(s.geom ? D.outlineRings(s.geom) : []);
   $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
-  const [w, so, e, n] = u.bbox;
-  globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.16, Math.min(2.2, Math.max(e - w, n - so) / 15)), 1700);
+  globeApi.focusBBox((s.geom && mainBBox(s.geom, 0.85)) || u.bbox, { minAlt: 0.15, pad: 1.35, ms: 1600 });
   $('btnRotate').classList.remove('on');
   refreshRegions();
   await setSeries(s, t);
-  loadAdm2(a);
+  state.adm2Ready = loadAdm2(a);
 }
 
 // Third level: departments / counties / districts inside the selected province (geoBoundaries, on demand).
 function loadAdm2(a) {
-  if (state.adm2 && state.adm2.uid === a.uid) { syncFilters(); return; }
+  if (state.adm2 && state.adm2.uid === a.uid) { syncFilters(); return Promise.resolve(); }
   $('fAdm2Wrap').hidden = false;
   $('selAdm2').innerHTML = `<option value="">${L().adm2Loading}</option>`;
   $('selAdm2').disabled = true;
-  D.getAdm2(a.uid).then(file => {
+  return D.getAdm2(a.uid).then(file => {
     const features = file.units.map(u => ({ id: u.id, name: u.name, unit: u, geom: (file.geo.features.find(f => f.properties.id === u.id) || {}).geometry })).filter(f => f.geom);
     return { ...file, features };
   }).catch(() => null).then(sub => {
@@ -319,8 +342,7 @@ async function pickSub(sub, { t } = {}) {
   state.aoi = { kind: 'sub', a3: parent.a3, uid: parent.uid, unit: parent.unit, country: parent.country, sid: sub.id, sub, name: sub.name, parentName: parent.unit ? uName(parent.unit) : '', lat: (s.bbox[1] + s.bbox[3]) / 2, lon: (s.bbox[0] + s.bbox[2]) / 2, geom: sub.geom, areaHa: s.areaHa, id: `gb:${sub.id}` };
   globeApi.hideContext();
   globeApi.setOutline(D.outlineRings(sub.geom));
-  const [w, so, e, n] = s.bbox;
-  globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.12, Math.min(2.2, Math.max(e - w, n - so) / 12)), 1500);
+  globeApi.focusBBox(s.bbox, { minAlt: 0.11, pad: 1.6, ms: 1400 });
   $('btnRotate').classList.remove('on');
   refreshRegions();
   await setSeries(s, t);
@@ -332,7 +354,7 @@ async function pickCircle(lat, lon, r, { t, label } = {}) {
   $('radiusRange').value = r; $('radiusVal').textContent = r;
   const near = nearestCountry(lat, lon);
   const preset = label || (PRESETS.find(p => p.lat != null && Math.abs(p.lat - lat) < 0.01 && Math.abs(p.lon - lon) < 0.01) || {}).name;
-  const name = preset || (near ? tpl(L().areaNear, { c: near.name }) : tpl(L().areaAt, { lat: lat.toFixed(2), lon: lon.toFixed(2) }));
+  const name = preset || (near ? tpl(L().areaNear, { c: cName(near) }) : tpl(L().areaAt, { lat: lat.toFixed(2), lon: lon.toFixed(2) }));
   toast(`${name} · ${r} km`);
   const s = await D.circleSeries(lat, lon, r);
   state.aoi = { kind: 'circle', lat, lon, radiusKm: r, name, id: s.id, geom: s.geom, areaHa: s.areaHa };
@@ -340,7 +362,8 @@ async function pickCircle(lat, lon, r, { t, label } = {}) {
   globeApi.setOutline(D.outlineRings(s.geom));
   $('radiusCtl').classList.add('on');
   refreshRegions();
-  globeApi.anchorTo(lat, lon, Math.max(0.14, Math.min(2.2, r / 260)), 1600);
+  const dLat = r / 111.32, dLon = Math.min(170, r / (111.32 * Math.max(0.05, Math.cos(lat * Math.PI / 180))));
+  globeApi.focusBBox([lon - dLon, lat - dLat, lon + dLon, lat + dLat], { minAlt: 0.11, pad: 1.7, ms: 1500 });
   $('btnRotate').classList.remove('on');
   await setSeries(s, t);
 }
@@ -356,9 +379,7 @@ async function pickPlace(p, { t } = {}) {
   globeApi.setOutline(D.outlineRings(p.geom));
   $('radiusCtl').classList.toggle('on', state.pickMode === 'circle');
   refreshRegions();
-  const [w, so, e, n] = s.bbox;
-  const span = Math.max(e - w, n - so);
-  globeApi.anchorTo((so + n) / 2, (w + e) / 2, Math.max(0.14, Math.min(2.2, span / 16)), 1700);
+  globeApi.focusBBox(mainBBox(p.geom, 0.85) || s.bbox, { minAlt: 0.12, pad: 1.4, ms: 1600 });
   $('btnRotate').classList.remove('on');
   await setSeries(s, t);
 }
@@ -432,7 +453,9 @@ async function selectMonth(t, { instant = false } = {}) {
     monthCellLabel: (tt, v) => `${l.monthsLong[U.monthOf(tt)]} ${U.yearOf(tt)}: ${U.fmt(v, state.lang)}`,
   });
   state.medians = medians;
+  if (!state.playing) calendar.setPlaying(null);
   renderLegend();
+  renderFacts();
   const st = monthStats(t);
   U.animateNumber($('kpiSel'), st.val, { lang: state.lang });
   $('kpiSelSub').textContent = `${l.monthsLong[m]} ${y} · ${l.kSelSub}`;
@@ -471,6 +494,47 @@ async function selectMonth(t, { instant = false } = {}) {
   writeHash();
 }
 
+// While the timeline is being dragged: move the map, the big label and the calendar marker only.
+// The full update (calendar colours, charts, ranking, burned area) runs once the drag pauses.
+function scrubMonth(t) {
+  const s = state.series;
+  if (!s) return;
+  t = Math.max(0, Math.min(s.n - 1, t));
+  state.t = t;
+  const l = L(), v = values()[t];
+  $('hudMonth').textContent = `${l.months[U.monthOf(t)]} ${U.yearOf(t)}`;
+  $('hudValue').textContent = U.fmt(v, state.lang);
+  $('timeLabel').textContent = `${l.months[U.monthOf(t)]} ${U.yearOf(t)}`;
+  calendar.setPlaying(t);
+  showGlobeMonth(t, { instant: false, rings: false });
+}
+
+// The challenge question in one line: which months and years had the most fire?
+function renderFacts() {
+  const s = state.series, v = values(), l = L(), [ya, yb] = yearRange(), el = $('calFacts');
+  let bt = -1, bv = 0;
+  const tot = new Map();
+  for (let t = 0; t < s.n; t++) {
+    const y = U.yearOf(t);
+    if (y < ya || y > yb) continue;
+    if (v[t] > bv) { bv = v[t]; bt = t; }
+    tot.set(y, (tot.get(y) || 0) + v[t]);
+  }
+  if (bt < 0) { el.innerHTML = `<div class="fact"><div class="fk">${l.factNone}</div></div>`; return; }
+  let by = ya, byv = -1;
+  for (const [y, x] of tot) if (x > byv) { byv = x; by = y; }
+  const med = state.medians || [], sum = med.reduce((a, b) => a + b, 0);
+  let bs = 0, bsum = -1;
+  for (let m = 0; m < 12; m++) { const x = med[m] + med[(m + 1) % 12] + med[(m + 2) % 12]; if (x > bsum) { bsum = x; bs = m; } }
+  const st = monthStats(state.t), m = U.monthOf(state.t);
+  const fact = (k, val, sub, t) => `<${t != null ? `button type="button" data-t="${t}"` : 'div'} class="fact"><div class="fk">${k}</div><div class="fv">${val}</div><div class="fs">${sub}</div></${t != null ? 'button' : 'div'}>`;
+  el.innerHTML = fact(l.factPeakMonth, `${l.months[U.monthOf(bt)]} ${U.yearOf(bt)}`, `${U.compact(bv)} ${l.factUnit}`, bt)
+    + fact(l.factPeakYear, String(by), `${U.compact(byv)} ${l.factUnit}`, Math.max(0, Math.min(s.n - 1, U.tOf(by, m))))
+    + fact(l.factSeason, sum > 0 ? `${l.months[bs]}–${l.months[(bs + 2) % 12]}` : '—', sum > 0 ? tpl(l.factShare, { p: Math.round((100 * bsum) / sum) }) : '', null)
+    + fact(`${l.monthsLong[m]} ${U.yearOf(state.t)}`, isFinite(st.anom) ? U.pct(st.anom, state.lang) : l.newActivity, tpl(l.factRank, { r: st.rank, n: st.nYears }), null);
+  el.querySelectorAll('button[data-t]').forEach(b => b.addEventListener('click', () => selectMonth(Number(b.dataset.t))));
+}
+
 // Draw the selected month on the globe: the world layer in World mode, only the place's cells otherwise.
 async function showGlobeMonth(t, { instant = false, rings = true } = {}) {
   const y = U.yearOf(t), label = `${y}-${String(U.monthOf(t) + 1).padStart(2, '0')}`;
@@ -502,8 +566,9 @@ async function showGlobeMonth(t, { instant = false, rings = true } = {}) {
 function renderPointsLegend(res, vmax) {
   const l = L(), a = state.aoi;
   state.lastPts = [res, vmax];
-  $('ptsTitle').textContent = l.ptsTitle;
-  $('ptsBody').textContent = tpl(l.ptsBody, { km: res === 1 ? '110' : '28' });
+  const flat = state.map === '2d';
+  $('ptsTitle').textContent = flat ? l.ptsTitle2d : l.ptsTitle;
+  $('ptsBody').textContent = tpl(flat ? l.ptsBody2d : l.ptsBody, { km: res === 1 ? '110' : '28' });
   $('ptsMax').textContent = vmax > 0 ? U.fmt(vmax, state.lang) : '—';
   const fillOn = state.fill && (a.kind === 'world' ? !!state.countriesH : !!(state.regions && (a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') && a.a3 === state.regions.a3));
   const subsOn = (a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid && !state.adm2.none;
@@ -527,7 +592,7 @@ function updateBurned() {
       sub.textContent = tpl(l.burnSub, { p: U.fmt(r.fraction * 100, state.lang, r.fraction < 0.01 ? 2 : 1) });
       const ib = $('insightBurn');
       if (ib && r.ha >= 10) ib.innerHTML = tpl(l.insightBurn, { ha: U.fmt(Math.round(r.ha / 10) * 10, state.lang) });
-    } else { el.textContent = '—'; sub.textContent = r.status === 'unavailable' ? l.burnNA : l.burnErr; }
+    } else { el.textContent = '—'; sub.textContent = r.status === 'unavailable' ? l.burnNA : r.status === 'toolarge' ? l.burnBig : l.burnErr; }
   }, 500);
 }
 
@@ -583,11 +648,21 @@ function renderAOIHead() {
   if (a.kind === 'circle') $('aoiMeta').textContent = `${a.lat.toFixed(3)}°, ${a.lon.toFixed(3)}° · ${tpl(l.radiusLabel, { r: a.radiusKm })} · ${s.cells.length} × 0.25° ${l.cells}`;
   else if (a.kind === 'polygon') $('aoiMeta').textContent = `${a.full || ''}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells}`;
   else if (a.kind === 'region') $('aoiMeta').textContent = `${[a.unit.iso, ctry].filter(Boolean).join(' · ')}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells}`;
-  else if (a.kind === 'sub') $('aoiMeta').textContent = `${[a.parentName, ctry].filter(Boolean).join(', ')}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells} · geoBoundaries${state.adm2 && state.adm2.source ? ` (${state.adm2.source}${state.adm2.license ? `, ${state.adm2.license}` : ''})` : ''}`;
+  else if (a.kind === 'sub') $('aoiMeta').textContent = `${[a.parentName, ctry].filter(Boolean).join(', ')}${areaTxt} · ${s.cells.length} × 0.25° ${l.cells} · geoBoundaries`;
   else $('aoiMeta').textContent = tpl(l.countryMeta, { last: lastLbl });
+  // Source and licence of the department boundaries, on hover.
+  $('aoiMeta').title = a.kind === 'sub' && state.adm2 && state.adm2.source ? `${state.adm2.source}${state.adm2.license ? ` · ${state.adm2.license}` : ''}` : '';
   renderCrumbs();
   syncFilters();
   renderRanking();
+  $('selActions').hidden = a.kind === 'world';
+  document.body.classList.toggle('has-sel', a.kind !== 'world');
+  $('btnUpTxt').textContent = parentTarget().label;
+  if (state.meta && state.meta.lastDate) {
+    const [fy, fm, fd] = state.meta.lastDate.split('-').map(Number);
+    $('freshTxt').textContent = tpl(l.fresh, { d: `${fd} ${l.months[fm - 1]} ${fy}` });
+    $('fresh').title = l.freshTitle;
+  }
   $('banner').textContent = tpl(l.banner, { last: lastLbl });
   const chips = $('presetChips');
   chips.innerHTML = '';
@@ -598,6 +673,55 @@ function renderAOIHead() {
     b.addEventListener('click', () => pickPreset(p));
     chips.appendChild(b);
   }
+}
+
+// One level up from the current selection (the "back" button and the Escape key).
+function parentTarget() {
+  const a = state.aoi;
+  if (a.kind === 'sub') return { label: a.unit ? uName(a.unit) : a.parentName, go: () => pickRegion(a.a3, a.uid, { t: state.t }) };
+  if (a.kind === 'region' && a.country) return { label: cName(a.country), go: () => pickCountry(a.country, { t: state.t }) };
+  if (a.kind === 'circle' || a.kind === 'polygon') {
+    const f = state.worldFeats && a.lat != null ? pickFeature(state.worldFeats, a.lat, a.lon) : null, c = f && f.fid != null ? countryByFid(f.fid) : null;
+    if (c) return { label: cName(c), go: () => pickCountry(c, { t: state.t }) };
+  }
+  return { label: L().world, go: () => pickWorld({ t: state.t }) };
+}
+
+// 3D globe (default) or 2D map.
+function setMapView(v) {
+  state.map = v;
+  globeApi.setMode(v);
+  $('v3d').classList.toggle('on', v === '3d'); $('v2d').classList.toggle('on', v === '2d');
+  $('v3d').setAttribute('aria-pressed', v === '3d'); $('v2d').setAttribute('aria-pressed', v === '2d');
+  document.body.classList.toggle('view-2d', v === '2d');
+  if (state.lastPts) renderPointsLegend(...state.lastPts);
+  if (state.series) writeHash();
+}
+
+// Sticky header: sliding section marker, reading progress, and its height for the sticky map.
+function setupNav() {
+  const bar = $('topbar'), nav = $('nav'), ink = $('navInk'), links = [...nav.querySelectorAll('a')];
+  const secs = links.map(a => document.querySelector(a.getAttribute('href')));
+  let active = null;
+  const moveInk = a => {
+    if (!a) { ink.style.opacity = '0'; return; }
+    ink.style.opacity = '1'; ink.style.width = `${a.offsetWidth}px`; ink.style.transform = `translateX(${a.offsetLeft}px)`;
+  };
+  links.forEach(a => { a.addEventListener('mouseenter', () => moveInk(a)); a.addEventListener('focus', () => moveInk(a)); });
+  nav.addEventListener('mouseleave', () => moveInk(active));
+  const onScroll = () => {
+    const y = window.scrollY, max = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.setProperty('--p', max > 0 ? Math.min(1, y / max).toFixed(4) : 0);
+    bar.classList.toggle('scrolled', y > 24);
+    const probe = bar.offsetHeight + 90;
+    let cur = null;
+    secs.forEach((sec, i) => { if (sec && !sec.hidden && sec.getBoundingClientRect().top <= probe) cur = links[i]; });
+    if (cur !== active) { active = cur; links.forEach(a => a.classList.toggle('on', a === cur)); if (!nav.matches(':hover')) moveInk(cur); }
+  };
+  let raf = 0;
+  window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; onScroll(); }); }, { passive: true });
+  new ResizeObserver(() => { document.documentElement.style.setProperty('--topbar-h', `${bar.offsetHeight}px`); moveInk(active); }).observe(bar);
+  onScroll();
 }
 
 // Breadcrumb: World > Country > Province / state > Department
@@ -668,7 +792,7 @@ function rankingItems() {
   return file.units.map(u => ({ name: uName(u), sub: uType(u), arr: file.H[u.id], sel: (a.kind === 'region' || a.kind === 'sub') && a.uid === u.id, go: () => pickRegion(file.a3, u.id, { t: state.t }) }));
 }
 function renderRanking() {
-  const card = $('ranking'), l = L(), a = state.aoi;
+  const card = $('rankSec'), l = L(), a = state.aoi;
   const items = state.series ? rankingItems() : null;
   if (!items || items.length < 2) { card.hidden = true; return; }
   card.hidden = false;
@@ -744,6 +868,13 @@ function drawValidation() {
   const p = x => `${U.fmt(x * 100, state.lang, 1)}%`;
   $('metrics').innerHTML = row(l.mdape, v.engine.mdape, v.naive.mdape, p) + row(l.bias, v.engine.bias, v.naive.bias, x => U.pct(x, state.lang)) + row(l.rlog, v.engine.rlog, v.naive.rlog, x => U.fmt(x, state.lang, 3));
   $('pairsNote').textContent = tpl(l.pairs, { n: U.fmt(v.pairs, state.lang) });
+  const h = state.handover;
+  $('handover').hidden = !h;
+  if (h) {
+    const one = (k, val, sub) => `<div class="metric"><div class="k">${k}</div><div class="row"><span>${sub}</span><b>${val}</b></div></div>`;
+    $('handMetrics').innerHTML = one(l.handErr, p(h.mdape), l.engine) + one(l.handBias, U.pct(h.bias, state.lang), `NOAA-20 × ${U.fmt(h.factor, state.lang, 3)}`) + one(l.handWithin, `${U.fmt(h.within10 * 100, state.lang)}%`, tpl(l.handWithin20, { p: U.fmt(h.within20 * 100, state.lang) }));
+    $('handNote').textContent = tpl(l.handPairs, { n: U.fmt(h.pairs, state.lang), o: U.fmt(h.observed, state.lang), q: U.fmt(h.predicted, state.lang) });
+  }
   drawScatter(charts.scatter, { validation: v, labels: { engine: l.engine, naive: l.naiveF, obs: l.obs, pred: l.pred } });
   drawDrift(charts.drift, { validation: v, lang: state.lang, labels: { obsViirs: l.obsViirs, predAqua: l.predAqua, driftZone: l.driftZone } });
 }
@@ -813,19 +944,22 @@ function exportPNG() {
 function writeHash() {
   const a = state.aoi, parts = [];
   if (a.kind === 'country') parts.push(`c=${a.id}`);
-  if (a.kind === 'region' || a.kind === 'sub') parts.push(`r=${a.a3}~${a.uid}`);
+  if (a.kind === 'region') parts.push(`r=${a.a3}~${a.uid}`);
+  if (a.kind === 'sub') parts.push(`r=${a.a3}~${a.uid}~${encodeURIComponent(a.sid)}`);
   if (a.kind === 'circle') parts.push(`p=${a.lat.toFixed(3)},${a.lon.toFixed(3)},${a.radiusKm}`);
   parts.push(`t=${U.yearOf(state.t)}-${String(U.monthOf(state.t) + 1).padStart(2, '0')}`);
   const [ya, yb] = yearRange();
   if (state.series && (ya !== 2000 || yb !== U.yearOf(state.series.n - 1))) parts.push(`yr=${ya}-${yb}`);
   if (state.lang !== 'en') parts.push(`lang=${state.lang}`);
+  if (state.map === '2d') parts.push('v=2d');
   history.replaceState(null, '', `#${parts.join('&')}`);
 }
 function readHash() {
   const h = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map(kv => kv.split('=')));
   const out = {};
   if (h.c) out.c = h.c;
-  if (h.r) { const [a3, uid] = decodeURIComponent(h.r).split('~'); if (a3 && uid) out.r = [a3, uid]; }
+  if (h.r) { const [a3, uid, sid] = h.r.split('~').map(decodeURIComponent); if (a3 && uid) out.r = [a3, uid, sid || null]; }
+  if (h.v === '2d') out.v = '2d';
   if (h.p) { const [a, b, r] = h.p.split(',').map(Number); if (isFinite(a) && isFinite(b)) out.p = [a, b, r || 150]; }
   if (h.t) { const [y, m] = h.t.split('-').map(Number); out.t = U.tOf(y, m - 1); }
   if (h.lang === 'es') state.lang = 'es';
@@ -874,23 +1008,44 @@ function setupUI() {
   $('langEs').addEventListener('click', () => setLang('es'));
   $('btnWorld').addEventListener('click', () => pickWorld({ t: state.t }));
   $('btnPlay').addEventListener('click', () => (state.playing ? stop() : play()));
-  $('timeRange').addEventListener('input', e => { if (state.playing) stop(); selectMonth(Number(e.target.value)); });
+  let scrubT;
+  $('timeRange').addEventListener('input', e => {
+    if (state.playing) stop();
+    const t = Number(e.target.value);
+    scrubMonth(t);
+    clearTimeout(scrubT); scrubT = setTimeout(() => selectMonth(t), 150);
+  });
   $('btnRotate').addEventListener('click', () => {
     if (globeApi.anchored) { globeApi.recenter(); return; }
     state.userRotate = !globeApi.autoRotate; globeApi.setAutoRotate(state.userRotate); $('btnRotate').classList.toggle('on', state.userRotate);
   });
   $('btnClouds').addEventListener('click', () => $('btnClouds').classList.toggle('on', globeApi.toggleClouds()));
-  $('btnHome').addEventListener('click', () => { if (globeApi.anchored) globeApi.recenter(); else globeApi.flyTo(-8, -45, 2.6, 1500); });
+  $('btnHome').addEventListener('click', () => { if (globeApi.anchored) globeApi.recenter(); else globeApi.home(); });
+  $('btnZoomIn').addEventListener('click', () => globeApi.zoomBy(0.6));
+  $('btnZoomOut').addEventListener('click', () => globeApi.zoomBy(1 / 0.6));
+  $('v3d').addEventListener('click', () => setMapView('3d'));
+  $('v2d').addEventListener('click', () => setMapView('2d'));
   // Click mode: regions (country -> province / state -> department) or a circle of adjustable radius.
   const setPickMode = m => {
+    const was = state.pickMode;
     state.pickMode = m;
     $('pmRegion').classList.toggle('on', m === 'region'); $('pmCircle').classList.toggle('on', m === 'circle');
     $('pmRegion').setAttribute('aria-pressed', m === 'region'); $('pmCircle').setAttribute('aria-pressed', m === 'circle');
     $('radiusCtl').classList.toggle('on', m === 'circle' || state.aoi.kind === 'circle');
+    document.body.classList.toggle('mode-circle', m === 'circle');
+    if (m === 'region') globeApi.setGhost(null);
+    // A circle sized to what is on screen (about 70 px of radius), so it is never a dot at world scale.
+    if (m === 'circle' && was !== 'circle' && state.aoi.kind !== 'circle') {
+      const km = globeApi.kmPerPx() * 70, step = km > 300 ? 50 : 10;
+      const r = Math.max(20, Math.min(1000, Math.round(km / step) * step));
+      state.radiusKm = r; $('radiusRange').value = r; $('radiusVal').textContent = r;
+    }
     $('globeHint').textContent = m === 'circle' ? L().pickHintCircle : L().pickHint;
     $('globeHint').style.opacity = '1';
     clearTimeout(setPickMode.t); setPickMode.t = setTimeout(() => { $('globeHint').style.opacity = '0'; }, 5000);
-    restyleRegions();
+    // Back to regions with a circle still on the map: drop the circle and open the country under it.
+    if (m === 'region' && was === 'circle' && state.aoi.kind === 'circle') parentTarget().go();
+    renderHover();
   };
   $('pmRegion').addEventListener('click', () => setPickMode('region'));
   $('pmCircle').addEventListener('click', () => setPickMode('circle'));
@@ -899,6 +1054,21 @@ function setupUI() {
     $('btnFill').classList.toggle('on', state.fill); $('btnFill').setAttribute('aria-pressed', state.fill);
     restyleRegions(); if (state.lastPts) renderPointsLegend(...state.lastPts);
   });
+  // Leave the current selection: one level up, or all the way to the world.
+  $('btnUp').addEventListener('click', () => parentTarget().go());
+  $('btnClear').addEventListener('click', () => pickWorld({ t: state.t }));
+  document.addEventListener('keydown', e => {
+    const typing = /INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '');
+    if (e.key === 'Escape' && !typing && state.aoi.kind !== 'world') parentTarget().go();
+    if (e.key === '/' && !typing) { e.preventDefault(); $('search').focus(); }
+  });
+  $('radiusPresets').addEventListener('click', e => {
+    const b = e.target.closest('button[data-r]');
+    if (!b) return;
+    $('radiusRange').value = b.dataset.r;
+    $('radiusRange').dispatchEvent(new Event('input'));
+  });
+  setupNav();
 
   // Region filters.
   populateCountrySelect();
