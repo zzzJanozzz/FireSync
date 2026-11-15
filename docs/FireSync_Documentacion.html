@@ -1,0 +1,195 @@
+<!doctype html>
+<!-- FireSync: documentación del proyecto. Redactada con asistencia de SI (Claude, Anthropic). Ver AI_USAGE.md. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>FireSync · Documentación del proyecto</title>
+<style>
+  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, Arial, sans-serif; font-size: 10.6pt; line-height: 1.5; color: #1c1a17; margin: 0; }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-size: 27pt; margin: 0 0 4pt; letter-spacing: -0.01em; }
+  h1 span { color: #d9480f; }
+  h2 { font-family: Georgia, serif; font-size: 16pt; margin: 22pt 0 6pt; padding-top: 8pt; border-top: 1.5pt solid #1c1a17; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 13pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin: 2pt 0; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 9.6pt; break-inside: avoid; }
+  th, td { text-align: left; vertical-align: top; padding: 4pt 6pt; border-bottom: 0.5pt solid #c9c4ba; }
+  th { background: #f1ede4; font-weight: 600; }
+  code { font-family: Consolas, monospace; font-size: 9.2pt; background: #f1ede4; padding: 0 3pt; }
+  .lead { font-size: 12pt; color: #44403a; margin-bottom: 10pt; }
+  .meta { font-size: 9.5pt; color: #6b665d; margin-bottom: 14pt; }
+  .box { border-left: 3pt solid #d9480f; background: #fbf3ea; padding: 8pt 11pt; margin: 8pt 0 11pt; break-inside: avoid; }
+  .box.blue { border-color: #3f76b0; background: #eef4fa; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  figure { margin: 8pt 0 12pt; break-inside: avoid; }
+  figure img { width: 100%; border: 0.5pt solid #c9c4ba; }
+  figcaption { font-size: 9pt; color: #6b665d; margin-top: 3pt; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+  .small { font-size: 9.3pt; color: #55514a; }
+</style>
+</head>
+<body>
+
+<h1>Fire<span>Sync</span></h1>
+<p class="lead">El motor de continuidad del registro de fuego de la Tierra. Documentación del proyecto: qué es, cómo funciona, qué se hizo, cómo se verificó y cómo presentarlo.</p>
+<p class="meta">NASA Space Apps Challenge 2026 · Reto: <i>Harmonization of MODIS and VIIRS Hot Spots</i> · Equipo: Jano, Mel, Siro, Yuri y Valen (Argentina)<br>
+App: https://firesync.pages.dev (dominio firesync.space en conexión) · espejo: https://zzzjanozzz.github.io/FireSync/ · Código: https://github.com/zzzJanozzz/FireSync · Versión del documento: 15 de noviembre de 2026</p>
+
+<h2>1. El problema, en un minuto</h2>
+<p>Los satélites detectan <b>focos de calor</b>: píxeles donde algo está ardiendo. Durante 25 años el instrumento de referencia fue <b>MODIS</b> (satélites Terra y Aqua, desde 2000). MODIS se está retirando y lo reemplaza <b>VIIRS</b> (satélites Suomi NPP, NOAA-20 y NOAA-21, desde 2012).</p>
+<p>Los dos no ven lo mismo. VIIRS tiene píxeles de 375 m contra 1 km de MODIS y es mucho más sensible de noche. Para el mismo fuego, VIIRS cuenta entre 4 y 6 veces más focos de día y hasta 30 veces más de noche.</p>
+<div class="box"><b>Consecuencia.</b> Si se pegan los dos registros tal cual, en 2012 aparece una "explosión" de fuego que nunca existió: solo cambió el instrumento. Quien gestiona incendios pierde su historia de 25 años justo cuando más la necesita para decir si este mes es normal o no.</div>
+<p>El reto pide <b>armonizar</b> los dos registros y mostrarlos en un <b>calendario de actividad de quemas</b> (año × mes) que permita elegir región y fechas, ver qué meses y años tuvieron más fuego y comparar el mes actual con la mediana histórica.</p>
+
+<h2>2. Qué hace FireSync</h2>
+<table>
+<tr><th style="width:27%">Pedido del reto</th><th>Cómo lo cumple FireSync</th></tr>
+<tr><td>Armonizar MODIS y VIIRS</td><td>Un único registro mensual, de noviembre de 2000 a noviembre de 2026, expresado en <b>focos equivalentes VIIRS</b></td></tr>
+<tr><td>Calendario desde los 2000</td><td>Mapa de calor año × mes. Las celdas reconstruidas desde MODIS van rayadas; las observadas por VIIRS, lisas</td></tr>
+<tr><td>Elegir región y fechas</td><td>Mundo → país → provincia o estado → departamento. También un círculo de radio ajustable, latitud y longitud, y un buscador. Selector de años</td></tr>
+<tr><td>Qué meses y años tuvieron más fuego</td><td>Franja de datos sobre el calendario (mes pico, año más activo, temporada habitual), totales por año como barras y ranking de regiones</td></tr>
+<tr><td>Mes actual contra la mediana</td><td>Anomalía en porcentaje, puesto entre todos los años y una frase en lenguaje claro</td></tr>
+<tr><td>Colores accesibles</td><td>Rampa <i>inferno</i> (perceptualmente uniforme) y una divergente apta para daltonismo</td></tr>
+<tr><td>CSV descargable y mapa interactivo</td><td>CSV de la matriz y de la serie, PNG del calendario, enlace compartible. Globo 3D y mapa 2D</td></tr>
+</table>
+<figure><img src="screenshots/02_la_rioja_provincia.png" alt="La Rioja, julio de 2026"><figcaption>La Rioja en julio de 2026: 296 focos, +406 % sobre su mediana. A la izquierda el mapa con sus 18 departamentos; a la derecha el resumen y el calendario.</figcaption></figure>
+
+<h2>3. Cómo funciona la armonización (explicado para exponer)</h2>
+<p>La idea central: <b>no se suman satélites y no se usa un único número mágico</b>. Se elige un satélite de referencia para cada época y se traduce lo que vio MODIS al "idioma" de VIIRS con factores medidos en los años en que los dos volaron juntos.</p>
+
+<h3>Paso 1 · Filtros comunes</h3>
+<p>Se usan todas las detecciones de NASA FIRMS: 556 millones entre 2000 y 2025, más 2026 por la API. Se conserva solo el fuego de vegetación (<code>type = 0</code>): quedan fuera volcanes, fábricas y antorchas de gas. Se exige confianza ≥ 30 en MODIS y nominal o alta en VIIRS.</p>
+
+<h3>Paso 2 · Cadena de satélites de referencia</h3>
+<table>
+<tr><th>Período</th><th>Satélite que define el mes</th><th>Cómo entra al registro</th></tr>
+<tr><td>Nov 2000 – Jun 2002</td><td>Terra (MODIS)</td><td>Reconstruido a equivalente VIIRS</td></tr>
+<tr><td>Jul 2002 – Ene 2012</td><td>Aqua (MODIS)</td><td>Reconstruido a equivalente VIIRS</td></tr>
+<tr><td>Feb 2012 – Oct 2026</td><td>Suomi NPP (VIIRS)</td><td>Observado, sin tocar</td></tr>
+<tr><td>Desde Nov 2026</td><td>NOAA-20 (VIIRS)</td><td>Observado, con un factor casi igual a 1</td></tr>
+</table>
+<p>Como siempre manda un solo satélite, sumar o perder satélites no infla los conteos.</p>
+
+<h3>Paso 3 · Factores de conversión</h3>
+<p>Entre 2012 y 2021 Aqua y Suomi NPP observaron los mismos fuegos. Para cada <b>país × mes del año × día o noche</b> se calcula cuántos focos VIIRS hubo por cada foco MODIS. Ese cociente es el factor.</p>
+<ul>
+<li>Factores globales medidos: Aqua→VIIRS <b>4,96</b> de día y <b>29,3</b> de noche. NOAA-20→Suomi NPP: 1,00 y 0,98.</li>
+<li>Donde hay pocos datos, el factor se "encoge" hacia el del país y después hacia el global (<i>shrinkage</i> con k = 30). Así una región chica no queda con un factor disparatado.</li>
+</ul>
+<p>Para reconstruir un mes viejo: focos MODIS de día × factor de día + focos MODIS de noche × factor de noche.</p>
+
+<h3>Paso 4 · Incertidumbre</h3>
+<p>El factor no es idéntico todos los años. La app muestra un <b>rango probable</b> para cada mes reconstruido, tomado de cuánto varió ese cociente de un año a otro (rango intercuartil).</p>
+
+<h3>Paso 5 · Validación: ¿cómo sabemos que funciona?</h3>
+<div class="box blue"><b>Prueba ciega.</b> Se calculan los factores usando solo 2012–2017. Con ellos se "predice" lo que VIIRS vio en 2018–2021 mirando solo Aqua, y se compara con lo que VIIRS realmente vio. Son 6.760 países-mes.
+<table style="margin-bottom:0">
+<tr><th>Métrica</th><th>FireSync</th><th>Un solo factor global</th></tr>
+<tr><td>Error absoluto mediano</td><td class="num"><b>22,8 %</b></td><td class="num">35,7 %</td></tr>
+<tr><td>Sesgo total</td><td class="num"><b>−1,7 %</b></td><td class="num">−4,2 %</td></tr>
+</table></div>
+<p><b>Chequeo del relevo.</b> Octubre de 2026 es el único mes completo con Suomi NPP y NOAA-20 a la vez en el registro de 2026, y el ajuste nunca lo vio. En 138 países, NOAA-20 reproduce a Suomi NPP con 7,7 % de error mediano y +3,8 % de sesgo.</p>
+
+<h2>4. Cómo está construido</h2>
+<table>
+<tr><th style="width:24%">Pieza</th><th style="width:26%">Archivo</th><th>Qué hace</th></tr>
+<tr><td>Pipeline de datos</td><td><code>pipeline/FireSync.cs</code> (C#)</td><td>Lee los 48 archivos anuales de FIRMS (45 GB de CSV) en unos 2 minutos. Agrupa cada detección en una grilla de 0,25° (~28 km) por país, mes, satélite y día/noche. Calcula factores, incertidumbre y validación</td></tr>
+<tr><td>Regiones</td><td><code>scripts/build_regions.mjs</code></td><td>Une los bordes de Natural Earth con el registro. Calcula el calendario de las 4.596 provincias y estados</td></tr>
+<tr><td>Departamentos</td><td><code>scripts/build_adm2.mjs</code></td><td>Anida 49.038 departamentos, condados y municipios (geoBoundaries) en su provincia y calcula sus calendarios</td></tr>
+<tr><td>Controles</td><td><code>scripts/audit_regions.mjs</code>, <code>handover_check.mjs</code></td><td>Auditoría de datos y chequeo del relevo. Se pueden volver a correr</td></tr>
+<tr><td>App web</td><td><code>web/</code></td><td>Sitio estático, sin servidor ni base de datos. JavaScript sin framework. Los datos son archivos JSON ya calculados</td></tr>
+</table>
+<h3>La app por dentro</h3>
+<ul>
+<li><code>app.js</code>: la lógica (qué área está elegida, qué mes, filtros, idioma, enlace compartible).</li>
+<li><code>calendar.js</code>: el calendario. <code>charts.js</code>: los gráficos (Apache ECharts).</li>
+<li><code>globe.js</code>: el globo 3D (three.js y globe.gl). <code>map2d.js</code>: el mapa 2D. <code>view.js</code>: el interruptor entre los dos.</li>
+<li><code>data.js</code>: carga de datos, búsqueda de localidades (OpenStreetMap) y área quemada (MODIS MCD64A1 en Microsoft Planetary Computer).</li>
+</ul>
+<h3>Qué tan precisas son las regiones (importante para no prometer de más)</h3>
+<div class="box"><b>El calendario de un país es exacto</b>: suma las detecciones que FIRMS asigna a ese país. <b>El de una provincia o un departamento es una aproximación</b>: suma las celdas de 28 km cuyo centro cae dentro del contorno, y usa los factores del país. En áreas de pocas celdas hay un error de borde de alrededor de una celda. Es correcto decir "cobertura de 4.596 provincias y 49.038 departamentos". No es correcto decir "datos exactos a nivel departamento".</div>
+
+<h2>5. Verificación de los datos</h2>
+<table>
+<tr><th style="width:44%">Control</th><th>Resultado</th></tr>
+<tr><td>Focos de 2025 dentro del contorno del país al que FIRMS los asigna (bordes de Natural Earth, fuente independiente)</td><td class="num">99,97 %</td></tr>
+<tr><td>Suma de países contra la serie mundial, peor mes desde 2012</td><td class="num">0,03 % de diferencia</td></tr>
+<tr><td>Países de FIRMS con contorno propio y único</td><td class="num">232 de 234</td></tr>
+<tr><td>Celdas con fuego asignadas a una provincia</td><td class="num">98,9 %</td></tr>
+<tr><td>Provincias que suman entre 85 % y 115 % del país</td><td class="num">136 de 142 países</td></tr>
+<tr><td>Brasil 2024, Aqua: INPE informó unos 278 mil focos</td><td>FireSync cuenta 299.599 (+7,6 %; incluye la pasada nocturna). Confirmar la cifra de INPE antes de citarla</td></tr>
+<tr><td>Chilecito, julio de 2026: prensa estimó 10.000–15.000 ha</td><td>FireSync: unas 11.800 ha (MODIS MCD64A1)</td></tr>
+</table>
+<h3>Errores encontrados y corregidos durante el desarrollo</h3>
+<table>
+<tr><th style="width:36%">Error</th><th>Arreglo</th></tr>
+<tr><td>Australia aparecía como "Islas Ashmore y Cartier"; Marruecos como "Sahara Occidental"</td><td>Los territorios que FIRMS cuenta dentro de otro país ya no le cambian el nombre. Los números siempre estuvieron bien</td></tr>
+<tr><td>Guayana Francesa figuraba como departamento de Francia</td><td>Los territorios de ultramar que FIRMS registra aparte son países</td></tr>
+<tr><td>Área quemada inflada en países grandes (Brasil: 51 millones de ha en un mes)</td><td>Lectura a resolución completa en bloques de 6°. Ahora da unos 9,6 millones</td></tr>
+<tr><td>El globo se trababa (2 a 7 cuadros por segundo)</td><td>Capa de regiones reescrita. Ahora 60 cuadros por segundo</td></tr>
+</table>
+
+<h2>6. Qué se hizo, en orden</h2>
+<table>
+<tr><th style="width:20%">Etapa</th><th>Trabajo</th></tr>
+<tr><td>Sábado 14, madrugada</td><td>Descarga de FIRMS, pipeline de armonización, validación ciega, primera versión del calendario y del globo, datos de 2026 por API, publicación en GitHub Pages</td></tr>
+<tr><td>Sábado 14, tarde</td><td>Regionalización: bordes de países, 4.596 provincias y 49.038 departamentos con calendario propio. Filtros, ranking, rango de años. Leyenda fuera del globo</td></tr>
+<tr><td>Sábado 14, noche</td><td>Rendimiento (60 cuadros por segundo), mapa 2D, selección por región o círculo, navegación nueva, calendario como primera sección, limitaciones, chequeo del relevo, área quemada corregida</td></tr>
+<tr><td>Domingo 15</td><td>Corrección de nombres de países y territorios, auditoría de datos, página estable entre idiomas, buscador animado, calendario en la primera pantalla, despliegue</td></tr>
+</table>
+<div class="two">
+<figure><img src="screenshots/06_calendario.png" alt="Calendario"><figcaption>El calendario: celdas rayadas = reconstruidas desde MODIS. Totales por año como barras.</figcaption></figure>
+<figure><img src="screenshots/05_mapa_2d.png" alt="Mapa 2D"><figcaption>Mapa 2D a nivel municipio (Nova Mutum, Mato Grosso).</figcaption></figure>
+</div>
+
+<h2>7. Evaluación como jurado</h2>
+<h3>Jurado local (los cinco criterios de esta fase)</h3>
+<table>
+<tr><th style="width:17%">Criterio</th><th style="width:10%">Nota</th><th>Por qué</th></tr>
+<tr><td>Creatividad</td><td class="num">4,5 / 5</td><td>Trata el problema como un sistema de continuidad y no como un factor. Calendario unido a un globo y un mapa que bajan hasta el departamento. Lo que no es nuevo: el calendario en sí, que es lo que pide el reto</td></tr>
+<tr><td>Validez</td><td class="num">4,5 / 5</td><td>Mide y publica su propio error, lo compara con el método simple, muestra incertidumbre y limitaciones. Resta: las provincias heredan el factor del país y el chequeo del relevo es de un solo mes</td></tr>
+<tr><td>Relevancia</td><td class="num">5 / 5</td><td>Cumple todos los puntos del enunciado y el calendario está en la primera pantalla</td></tr>
+<tr><td>Impacto</td><td class="num">4,5 / 5</td><td>Sirve a cualquier país, gratis y sin instalar nada. El caso de Chilecito es real. Resta: todavía no lo probó un usuario real (un bombero, una oficina de Defensa Civil)</td></tr>
+<tr><td>Presentación</td><td class="num">Depende del equipo</td><td>El producto se ve profesional. La nota la define cómo lo cuenten: historia clara, demo en vivo sin tropiezos y poder explicar el método sin leer</td></tr>
+</table>
+<h3>Jurado global</h3>
+<p>Mira sobre todo el video de 30 segundos y la página de entrega; muchos no abren la app. FireSync compite bien en <b>Best Use of Data</b> y en <b>Local Impact</b>. Estimación de criterio, no un dato: nominación local 60–80 %, finalista global 10–20 %, uno de los 10 premios 2–5 %.</p>
+<h3>¿Nos fuimos del reto?</h3>
+<div class="box blue"><b>No.</b> El reto pide armonización y calendario, y las dos cosas están, validadas. La regionalización no reemplaza al calendario: lo multiplica, porque le da un calendario a cada lugar del planeta. El riesgo no está en el producto sino en el relato. Si en la exposición se habla diez minutos del globo y uno del calendario, el jurado va a pensar que se fueron del tema. <b>Orden recomendado: problema → armonización → calendario → validación → y recién ahí "y esto funciona para cualquier lugar del mundo".</b></div>
+
+<h2>8. Guion para exponer</h2>
+<ol>
+<li><b>El problema (30 s).</b> "MODIS mira el fuego desde 2000 y se está retirando. VIIRS lo reemplaza pero ve cinco veces más focos. Si pegás los dos, en 2012 aparece un incendio que nunca existió."</li>
+<li><b>La solución (30 s).</b> "FireSync traduce MODIS al idioma de VIIRS con factores medidos por país, mes y día o noche, en los años en que volaron juntos. El resultado es un solo registro de 26 años."</li>
+<li><b>El calendario (60 s).</b> Abrir La Rioja, julio de 2026. "Este es el calendario que pide el reto. Las celdas rayadas son reconstruidas, las lisas son observadas. Julio de 2026: 296 focos, +406 % sobre la mediana, tercer julio más alto en 26 años." Mostrar anomalía y descargar el CSV.</li>
+<li><b>La prueba (40 s).</b> Sección Validación. "Lo probamos a ciegas: 22,8 % de error contra 35,7 % del método simple. Y decimos qué no puede hacer."</li>
+<li><b>El alcance (40 s).</b> Bajar a Chilecito: "+1.508 %, el departamento más activo de la provincia". Subir a Mundo y pasar a 2D. "Funciona igual para 4.596 provincias y 49.038 departamentos."</li>
+<li><b>Cierre (15 s).</b> "26 años, 4 satélites, un solo registro, validado y abierto para cualquier gestor de incendios."</li>
+</ol>
+<h3>Preguntas probables y respuestas cortas</h3>
+<table>
+<tr><th style="width:38%">Pregunta</th><th>Respuesta</th></tr>
+<tr><td>¿Por qué no multiplicar MODIS por un número?</td><td>Porque la diferencia cambia según el lugar, la estación y si es de día o de noche: de 5 veces de día a 29 de noche. Un solo número da 35,7 % de error; el nuestro, 22,8 %</td></tr>
+<tr><td>¿Cómo saben que funciona?</td><td>Prueba ciega 2018–2021 con factores de 2012–2017, y el chequeo de octubre de 2026 con datos que el ajuste nunca vio</td></tr>
+<tr><td>¿Qué no puede hacer?</td><td>No mide hectáreas ni cuenta incendios: mide actividad. Antes de 2012 es una reconstrucción. En áreas muy chicas es indicativo</td></tr>
+<tr><td>¿Qué hicieron ustedes y qué la IA?</td><td>La IA (Claude) escribió el código y la investigación de base, y está declarado. El equipo eligió el reto, definió qué construir, probó, corrigió y decidió cada cambio</td></tr>
+<tr><td>¿Quién lo usaría?</td><td>Defensa Civil, brigadas, servicios meteorológicos y periodistas: cualquiera que necesite saber si este mes es anormal en su zona</td></tr>
+</table>
+
+<h2>9. Publicación</h2>
+<ul>
+<li><b>GitHub Pages</b> (en vivo): cada <code>git push</code> a <code>main</code> vuelve a publicar la carpeta <code>web/</code>.</li>
+<li><b>Cloudflare Pages</b> (en vivo): https://firesync.pages.dev. Se publica con <code>npx wrangler@3 pages deploy web --project-name firesync --branch main</code>.</li>
+<li><b>Dominio firesync.space</b>: registrado en el proyecto. Falta agregar el dominio a Cloudflare desde el panel y cambiar los nameservers en Spaceship; los pasos están en <code>docs/DEPLOY_CLOUDFLARE.md</code>.</li>
+<li>La app es estática: 9.100 archivos, 370 MB, sin servidor que mantener ni costo.</li>
+</ul>
+
+<h2>10. Fuentes y uso de IA</h2>
+<p class="small"><b>Datos.</b> NASA FIRMS (MODIS MCD14ML Collection 6.1/6.2; VIIRS 375 m VNP14IMG y VJ114IMG V002) y la API de FIRMS para 2026. Área quemada: MODIS MCD64A1 Collection 6.1 (NASA LP DAAC) a través de Microsoft Planetary Computer. Bordes: Natural Earth (dominio público) y geoBoundaries (Runfola et al. 2020). Localidades: © colaboradores de OpenStreetMap. Imágenes: NASA Blue Marble. Librerías: three.js, globe.gl, Apache ECharts.</p>
+<p class="small"><b>Uso de Súper Inteligencia.</b> El código, el pipeline, la investigación de base y este documento se hicieron con asistencia de Claude (Anthropic). Está declarado en <code>AI_USAGE.md</code> y en el encabezado de cada archivo. FireSync es un proyecto del NASA Space Apps Challenge y no está respaldado por NASA.</p>
+
+</body>
+</html>

@@ -6,7 +6,7 @@
 FireSync: the continuity engine for Earth's fire record
 
 ## Final project link
-- App: https://firesync.space (mirror: https://zzzjanozzz.github.io/FireSync/)
+- App: https://firesync.pages.dev (use https://firesync.space once the domain is active; mirror: https://zzzjanozzz.github.io/FireSync/)
 - Code and method: https://github.com/zzzJanozzz/FireSync
 
 ## High-level summary (≈ 150 words)

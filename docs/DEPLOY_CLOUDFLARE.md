@@ -10,6 +10,24 @@ La app es estática: Cloudflare solo tiene que servir la carpeta `web/`. No hay 
 | Archivo más grande | unos 2,7 MB (límite: 25 MiB) |
 | Headers y caché | `web/_headers` (ya incluido) |
 
+## Estado al 15 de noviembre de 2026
+
+| Paso | Estado |
+|---|---|
+| Proyecto de Cloudflare Pages `firesync` | Creado |
+| Sitio publicado | En vivo en https://firesync.pages.dev (subido con `wrangler pages deploy web`) |
+| Dominios `firesync.space` y `www.firesync.space` en el proyecto | Registrados, esperando el DNS |
+| Dominio agregado a Cloudflare (zona) | **Pendiente**: hay que hacerlo desde el panel (sección 2, pasos 2 y 3) |
+| Nameservers en Spaceship | **Pendiente**: hoy son `launch1.spaceship.net` y `launch2.spaceship.net` (sección 2, paso 4) |
+
+Para volver a publicar después de un cambio:
+
+```bash
+npx wrangler@3 pages deploy web --project-name firesync --branch main
+```
+
+GitHub Pages se sigue actualizando solo con cada `git push`. Cloudflare Pages no: el proyecto se creó por subida directa, así que hay que correr el comando de arriba (o conectar el repositorio desde el panel).
+
 ## 1. Crear el proyecto en Cloudflare Pages
 
 Hay dos caminos. El primero es el recomendado porque cada `git push` vuelve a publicar solo.
