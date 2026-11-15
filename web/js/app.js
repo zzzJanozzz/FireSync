@@ -5,8 +5,8 @@ import { Calendar } from './calendar.js';
 import { createView } from './view.js';
 import { mainBBox, pickFeature } from './regions.js';
 import { createCharts, drawSeasonal, drawAnnual, drawScatter, drawDrift } from './charts.js';
-import { I18N, tpl } from './i18n.js';
-import { createPeriod } from './period.js';
+import { I18N, tpl } from './i18n.js?v=20261115c';
+import { createPeriod } from './period.js?v=20261115c';
 
 const $ = id => document.getElementById(id);
 const state = {

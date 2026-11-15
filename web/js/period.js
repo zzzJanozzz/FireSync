@@ -1,7 +1,7 @@
 // FireSync period analytics: any region + any date range -> summary, chart and downloads.
 // Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
 import * as U from './util.js';
-import { I18N, tpl } from './i18n.js';
+import { I18N, tpl } from './i18n.js?v=20261115c';
 
 const $ = id => document.getElementById(id);
 
