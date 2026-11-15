@@ -6,6 +6,7 @@ import { createView } from './view.js';
 import { mainBBox, pickFeature } from './regions.js';
 import { createCharts, drawSeasonal, drawAnnual, drawScatter, drawDrift } from './charts.js';
 import { I18N, tpl } from './i18n.js';
+import { createPeriod } from './period.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -18,7 +19,7 @@ const state = {
   yFrom: 2000, yTo: null, // year range shown in the calendar and exported (null = latest year)
 };
 const L = () => I18N[state.lang];
-let globeApi = null, calendar = null, charts = null;
+let globeApi = null, calendar = null, charts = null, period = null;
 
 const PRESETS = [
   { label: 'Chilecito · AR', name: 'Chilecito, La Rioja (Argentina)', lat: -29.18, lon: -67.64, r: 40, t: U.tOf(2026, 6) },
@@ -50,6 +51,7 @@ async function boot() {
   calendar = new Calendar($('calendar'), { onSelect: t => selectMonth(t), onHover: showTip });
   charts = createCharts({ seasonal: $('chSeasonal'), annual: $('chAnnual'), scatter: $('chScatter'), drift: $('chDrift') });
   setupUI();
+  period = createPeriod({ state, L, values, baselineYears, selectMonth: t => selectMonth(t), areaSlug, toast, onChange: () => writeHash() });
   step(70, L().loading);
   const h = state.pendingHash;
   try {
@@ -505,6 +507,7 @@ async function selectMonth(t, { instant = false } = {}) {
   drawSeasonal(charts.seasonal, { values: values(), n: s.n, year: y, baseline: baselineYears(), labels: { months: l.months, median: l.median, iqr: l.iqr }, lang: state.lang });
   drawAnnual(charts.annual, { series: s, lang: state.lang, selYear: y, showNaive: true, labels: { harmonized: l.harmonized, naive: l.naive, band: l.band, reconEra: l.reconEra } });
   renderRanking();
+  if (period) period.render();
   await showGlobeMonth(t, { instant, rings: true });
   updateBurned();
   writeHash();
@@ -725,7 +728,7 @@ function fitInsight() {
 // Every translated label reserves the room of its longest version: buttons and menu entries keep their width,
 // paragraphs keep their height, and the long texts written once per language (method, limitations) match.
 function stabilizeLayout() {
-  const langs = Object.keys(I18N), WIDE = '.topbar, .hud-tr, .sel-actions, .controls, .downloads, .rc-head';
+  const langs = Object.keys(I18N), WIDE = '.topbar, .hud-tr, .sel-actions, .controls, .downloads, .rc-head, .per-presets';
   const jobs = [];
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const texts = langs.map(g => I18N[g][el.dataset.i18n]).filter(x => typeof x === 'string');
@@ -1035,6 +1038,10 @@ function writeHash() {
   parts.push(`t=${U.yearOf(state.t)}-${String(U.monthOf(state.t) + 1).padStart(2, '0')}`);
   const [ya, yb] = yearRange();
   if (state.series && (ya !== 2000 || yb !== U.yearOf(state.series.n - 1))) parts.push(`yr=${ya}-${yb}`);
+  if (state.series && state.pFrom != null && !(state.pTo === state.series.n - 1 && state.pFrom === Math.max(0, state.series.n - 12))) {
+    const ym = t => `${U.yearOf(t)}-${String(U.monthOf(t) + 1).padStart(2, '0')}`;
+    parts.push(`pr=${ym(state.pFrom)}~${ym(state.pTo)}`);
+  }
   if (state.lang !== 'en') parts.push(`lang=${state.lang}`);
   if (state.map === '2d') parts.push('v=2d');
   history.replaceState(null, '', `#${parts.join('&')}`);
@@ -1049,6 +1056,10 @@ function readHash() {
   if (h.t) { const [y, m] = h.t.split('-').map(Number); out.t = U.tOf(y, m - 1); }
   if (h.lang === 'es') state.lang = 'es';
   if (h.yr) { const [a, b] = h.yr.split('-').map(Number); if (a >= 2000 && b >= a) { state.yFrom = a; state.yTo = b; } }
+  if (h.pr) {
+    const [a, b] = h.pr.split('~').map(s => s.split('-').map(Number));
+    if (a && b && a[0] >= 2000 && b[0] >= 2000 && a[1] >= 1 && b[1] >= 1) { state.pFrom = Math.max(0, U.tOf(a[0], a[1] - 1)); state.pTo = Math.max(0, U.tOf(b[0], b[1] - 1)); }
+  }
   state.pendingHash = out;
 }
 
@@ -1160,7 +1171,7 @@ function setupUI() {
   document.querySelector('.brand').addEventListener('click', e => {
     e.preventDefault();
     if (state.playing) stop();
-    Object.assign(state, { mode: 'counts', view: 'harmonized', baseline: 'viirs', yFrom: 2000, yTo: null, fill: true, rankAll: false, userRotate: true, places: [] });
+    Object.assign(state, { mode: 'counts', view: 'harmonized', baseline: 'viirs', yFrom: 2000, yTo: null, pFrom: null, pTo: null, fill: true, rankAll: false, userRotate: true, places: [] });
     $('mCounts').classList.add('on'); $('mAnom').classList.remove('on');
     $('vHarm').classList.add('on'); $('vNaive').classList.remove('on');
     $('baseSel').value = 'viirs';

@@ -42,10 +42,10 @@
     </a>
     <nav class="nav" id="nav" aria-label="Sections">
       <a href="#calendarSec"><i>01</i><span data-i18n="navCal">Calendar</span></a>
-      <a href="#rankSec"><i>02</i><span data-i18n="navRank">Regions</span></a>
-      <a href="#seasonSec"><i>03</i><span data-i18n="navSeason">Seasonality</span></a>
-      <a href="#validation"><i>05</i><span data-i18n="navVal">Validation</span></a>
-      <a href="#method"><i>06</i><span data-i18n="navMethod">Method</span></a>
+      <a href="#periodSec"><i>02</i><span data-i18n="navPeriod">Analytics</span></a>
+      <a href="#rankSec"><i>03</i><span data-i18n="navRank">Regions</span></a>
+      <a href="#validation"><i>06</i><span data-i18n="navVal">Validation</span></a>
+      <a href="#method"><i>07</i><span data-i18n="navMethod">Method</span></a>
       <span class="nav-ink" id="navInk" aria-hidden="true"></span>
     </nav>
     <div class="top-actions">
@@ -197,8 +197,55 @@
         <div class="chips" id="presetChips"></div>
       </div>
 
+      <!-- Challenge requirement: select a region and a date range, then download analytics and visualizations. -->
+      <div class="card reveal period" id="periodSec">
+        <div class="per-top">
+          <div>
+            <span class="section-no">02</span>
+            <h2 data-i18n="perTitle">Region + date range analytics</h2>
+            <p class="desc" data-i18n="perDesc"></p>
+          </div>
+        </div>
+        <div class="per-box">
+          <div class="per-sel">
+            <div class="per-area"><span class="per-lbl" data-i18n="perAreaLbl">Region</span><b id="perArea">World</b><small data-i18n="perAreaHint">Change it on the map, the search or the filters</small></div>
+            <div class="per-dates">
+              <span class="per-lbl" data-i18n="perDatesLbl">Date range</span>
+              <div class="per-pick">
+                <span class="per-ym"><select id="perFromM" aria-label="From month"></select><select id="perFromY" aria-label="From year"></select></span>
+                <span class="per-arrow" aria-hidden="true">→</span>
+                <span class="per-ym"><select id="perToM" aria-label="To month"></select><select id="perToY" aria-label="To year"></select></span>
+              </div>
+              <div class="per-presets" id="perPresets">
+                <button type="button" data-p="12" data-i18n="perP12">Last 12 months</button>
+                <button type="button" data-p="ytd" data-i18n="perPytd">This year</button>
+                <button type="button" data-p="prev" data-i18n="perPprev">Last year</button>
+                <button type="button" data-p="sel" data-i18n="perPsel">Selected year</button>
+                <button type="button" data-p="viirs" data-i18n="perPviirs">VIIRS era</button>
+                <button type="button" data-p="all" data-i18n="perPall">Whole record</button>
+              </div>
+            </div>
+          </div>
+          <div class="per-range" id="perRange"></div>
+          <div class="kpis per-kpis">
+            <div class="kpi"><div class="k" data-i18n="perTotal">Hotspots in the period</div><div class="v" id="perTot">—</div><div class="s" id="perTotSub"></div></div>
+            <div class="kpi"><div class="k" data-i18n="perVs">vs a typical period</div><div class="v" id="perAnom">—</div><div class="s" id="perAnomSub"></div></div>
+            <div class="kpi"><div class="k" data-i18n="perPeakK">Peak month</div><div class="v" id="perPeak">—</div><div class="s" id="perPeakSub"></div></div>
+            <div class="kpi"><div class="k" data-i18n="perAboveK">Months above median</div><div class="v" id="perAbove">—</div><div class="s" id="perAboveSub"></div></div>
+          </div>
+          <div class="per-chart"><canvas id="perChart" role="img" aria-label="Monthly hotspots in the selected period"></canvas></div>
+          <div class="per-read" id="perRead"></div>
+          <div class="downloads per-dl">
+            <button class="btn primary" id="perCsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i18n="perCsv">Period data (CSV)</span></button>
+            <button class="btn" id="perPng"><span data-i18n="perPng">Report image (PNG)</span></button>
+            <button class="btn" id="perJson"><span data-i18n="perJson">Analytics (JSON)</span></button>
+          </div>
+        </div>
+      </div>
+
+
       <div class="card reveal" id="rankSec" hidden>
-        <span class="section-no">02</span>
+        <span class="section-no">03</span>
         <div class="ranking" id="ranking">
           <div class="rank-head"><h2 id="rankTitle"></h2><p class="desc" id="rankSub"></p></div>
           <div class="rank-list" id="rankList" role="list"></div>
@@ -208,13 +255,13 @@
 
       <div class="charts-wrap reveal" id="seasonSec">
         <div class="charts-row">
-          <div class="card"><span class="section-no">03</span><h2 data-i18n="seasonalTitle">Seasonal profile vs historical median</h2><p class="desc" data-i18n="seasonalDesc"></p><div class="chart" id="chSeasonal"></div></div>
-          <div class="card"><span class="section-no">04</span><h2 data-i18n="annualTitle">Annual totals and the 2012 sensor jump</h2><p class="desc" data-i18n="annualDesc"></p><div class="chart" id="chAnnual"></div></div>
+          <div class="card"><span class="section-no">04</span><h2 data-i18n="seasonalTitle">Seasonal profile vs historical median</h2><p class="desc" data-i18n="seasonalDesc"></p><div class="chart" id="chSeasonal"></div></div>
+          <div class="card"><span class="section-no">05</span><h2 data-i18n="annualTitle">Annual totals and the 2012 sensor jump</h2><p class="desc" data-i18n="annualDesc"></p><div class="chart" id="chAnnual"></div></div>
         </div>
       </div>
 
       <div class="card reveal" id="validation">
-        <span class="section-no">05</span>
+        <span class="section-no">06</span>
         <h2 data-i18n="valTitle">Validation lab</h2>
         <p class="desc" data-i18n="valDesc" style="margin-bottom:18px"></p>
         <div class="metrics" id="metrics"></div>
@@ -231,7 +278,7 @@
       </div>
 
       <div class="card reveal method" id="method">
-        <span class="section-no">06</span>
+        <span class="section-no">07</span>
         <h2 data-i18n="methodTitle">How FireSync harmonizes MODIS and VIIRS</h2>
         <div data-lang="en">
           <p>MODIS (Terra 2000–, Aqua 2002–) holds the long fire record but is retiring. VIIRS (Suomi NPP 2012–2026, NOAA-20 2018–, NOAA-21 2024–) sees roughly 4–6 times more hotspots by day and far more at night, thanks to its 375 m pixels. Gluing the two raw records together fakes a fire explosion in 2012. FireSync builds one consistent record in <b>VIIRS-equivalent hotspots</b>:</p>

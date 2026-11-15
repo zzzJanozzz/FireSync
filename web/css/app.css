@@ -427,3 +427,44 @@ button.fact:hover .fv { text-decoration: underline; text-decoration-color: var(-
 #monthSec .kpis { margin-top: 0; border-top: 0; }
 #calendarSec { padding-top: 20px; }
 #calendarSec .card-head { margin-bottom: 12px; }
+
+/* ---------------------------------------------------------------- period analytics (region + date range) */
+.period .per-box { position: relative; margin-top: 18px; padding: 18px 20px 16px; background: linear-gradient(180deg, rgba(243,120,25,.05), rgba(21,20,17,0) 140px), var(--surface); border: 1px solid var(--rule-2); border-radius: 6px; overflow: hidden; }
+.period .per-box::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, #932667, #dd513a 45%, #fca50a); }
+.per-sel { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); gap: 16px 26px; align-items: start; }
+@media (max-width: 760px) { .per-sel { grid-template-columns: 1fr; } }
+.per-lbl { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ember-2); margin-bottom: 6px; }
+.per-area b { display: block; font-family: var(--serif); font-size: 21px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.per-area small { display: block; margin-top: 4px; font-size: 12px; color: var(--faint); }
+.per-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.per-ym { display: inline-flex; border: 1px solid var(--rule-2); border-radius: 4px; overflow: hidden; background: var(--bg); transition: border-color .2s, box-shadow .2s; }
+.per-ym:focus-within, .per-ym:hover { border-color: var(--ember-2); box-shadow: 0 0 0 3px rgba(243,150,90,.12); }
+.per-ym select { appearance: none; -webkit-appearance: none; border: 0; background: transparent; padding: 7px 10px; font-size: 14px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.per-ym select + select { border-left: 1px solid var(--rule-2); }
+.per-ym select option { background: var(--surface); color: var(--text); }
+.per-arrow { color: var(--faint); font-size: 16px; }
+.per-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.per-presets button { border: 1px solid var(--rule-2); background: none; color: var(--muted); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; white-space: nowrap; }
+.per-presets button:hover { color: var(--text); border-color: var(--muted); }
+.per-presets button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.per-range { margin-top: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.kpis.per-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 8px; }
+.per-kpis .kpi:nth-child(n) { border-top: 0; }
+.per-kpis .kpi:nth-child(4) { border-left: 1px solid var(--rule); padding-left: 14px; }
+.per-kpis .kpi .v { font-size: clamp(22px, 2vw, 30px); }
+@media (max-width: 1400px) and (min-width: 1101px), (max-width: 760px) {
+  .kpis.per-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .per-kpis .kpi:nth-child(3) { border-left: 0; padding-left: 0; }
+  .per-kpis .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+.per-chart { margin-top: 14px; }
+.per-chart canvas { display: block; width: 100%; height: 230px; cursor: crosshair; }
+.per-read { min-height: 20px; margin-top: 6px; font-size: 12.5px; color: var(--muted); display: flex; gap: 6px 16px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.per-read b { color: var(--text); font-weight: 600; }
+.per-key { display: inline-flex; align-items: center; gap: 6px; }
+.per-key i { display: inline-block; width: 14px; height: 10px; }
+.per-key .k-bar { background: linear-gradient(90deg, #932667, #f37819, #fca50a); }
+.per-key .k-med { height: 0; border-top: 2px dashed var(--sky); }
+.per-key .k-hatch { background: repeating-linear-gradient(135deg, rgba(255,255,255,.45) 0 1px, transparent 1px 4px), #6a176e; }
+.per-dl { margin-top: 12px; }
+@media (max-width: 480px) { .period .per-box { padding: 14px 12px; } .per-ym select { padding: 7px 7px; font-size: 13px; } }
