@@ -44,6 +44,7 @@ The full metrics (bias, log correlation, per-country errors) are in `web/data/va
 | `scripts/firms_zips.curlrc` | Download list of the 48 FIRMS yearly global archives |
 | `scripts/serve.ps1` | Zero-install local web server |
 | `scripts/build_regions.mjs` | Joins Natural Earth borders to the record: calendars of all 4,596 provinces / states, search index, country borders |
+| `scripts/audit_regions.mjs` | Data audit: country attribution against Natural Earth borders, and that every level adds up |
 | `scripts/handover_check.mjs` | NOAA-20 vs Suomi NPP on October 2026, written to `web/data/handover.json` |
 | `scripts/build_adm2.mjs` | Nests 49,038 geoBoundaries departments / counties in their province and builds their calendars (one file per province) |
 | `docs/DEPLOY_CLOUDFLARE.md` | Cloudflare Pages + firesync.space setup (Spanish) |

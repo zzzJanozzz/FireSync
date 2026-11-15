@@ -49,7 +49,6 @@
       <span class="nav-ink" id="navInk" aria-hidden="true"></span>
     </nav>
     <div class="top-actions">
-      <span class="fresh" id="fresh"><i aria-hidden="true"></i><span id="freshTxt"></span></span>
       <div class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="search" type="search" autocomplete="off" aria-label="Search a country, province or town" data-i18n-ph="search" placeholder="Country, province or town…">
@@ -132,6 +131,7 @@
           <div class="dock-eras">
             <div class="era-strip" id="eraStrip"></div>
             <div class="era-legend" id="eraLegend"></div>
+            <div class="dock-fresh" id="fresh"><span id="freshTxt"></span></div>
           </div>
           <div class="legend-points" role="note">
             <div class="pl-head"><span class="pl-title" id="ptsTitle">What the columns show</span><span class="pl-ramp"><span>1</span><i class="ramp"></i><span id="ptsMax">—</span></span></div>
@@ -156,14 +156,6 @@
           <label class="f" id="fAdm2Wrap" hidden><span id="fAdm2Lbl" data-i18n="fAdm2">Department / county</span><select id="selAdm2"></select></label>
         </div>
         <p class="insight" id="insight" aria-live="polite"></p>
-        <div class="kpis">
-          <div class="kpi"><div class="k" data-i18n="kSel">Selected month</div><div class="v" id="kpiSel">—</div><div class="s" id="kpiSelSub"></div></div>
-          <div class="kpi"><div class="k" data-i18n="kMed">Historical median</div><div class="v" id="kpiMed">—</div><div class="s" id="kpiMedSub"></div></div>
-          <div class="kpi"><div class="k" data-i18n="kAnom">Anomaly vs median</div><div class="v" id="kpiAnom">—</div><div class="s" id="kpiAnomSub"></div></div>
-          <div class="kpi"><div class="k" data-i18n="kRank">Rank among years</div><div class="v" id="kpiRank">—</div><div class="s" id="kpiRankSub"></div></div>
-          <div class="kpi"><div class="k" data-i18n="kBurn">Burned area (ha)</div><div class="v" id="kpiBurn">—</div><div class="s" id="kpiBurnSub"></div></div>
-        </div>
-        <div class="chips" id="presetChips"></div>
       </div>
 
       <div class="card reveal" id="calendarSec">
@@ -191,6 +183,18 @@
           <button class="btn" id="dlPng"><span data-i18n="png">Calendar PNG</span></button>
           <button class="btn ghost" id="btnShare"><span data-i18n="share">Copy link</span></button>
         </div>
+      </div>
+
+      <!-- The selected month in numbers. It sits under the calendar so the calendar is on the first screen. -->
+      <div class="card reveal" id="monthSec">
+        <div class="kpis">
+          <div class="kpi"><div class="k" data-i18n="kSel">Selected month</div><div class="v" id="kpiSel">—</div><div class="s" id="kpiSelSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kMed">Historical median</div><div class="v" id="kpiMed">—</div><div class="s" id="kpiMedSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kAnom">Anomaly vs median</div><div class="v" id="kpiAnom">—</div><div class="s" id="kpiAnomSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kRank">Rank among years</div><div class="v" id="kpiRank">—</div><div class="s" id="kpiRankSub"></div></div>
+          <div class="kpi"><div class="k" data-i18n="kBurn">Burned area (ha)</div><div class="v" id="kpiBurn">—</div><div class="s" id="kpiBurnSub"></div></div>
+        </div>
+        <div class="chips" id="presetChips"></div>
       </div>
 
       <div class="card reveal" id="rankSec" hidden>

@@ -20,6 +20,30 @@ const countries = readJSON(path.join(WEB, 'countries.json'));
 const world = readJSON(path.join(NE, 'world.json'));
 const adm1 = readJSON(path.join(NE, 'adm1.json'));
 
+// Overseas departments and territories that Natural Earth files as a province of the mother country but that
+// NASA FIRMS records as a country of its own. They become countries here too, so France's provinces are the
+// metropolitan ones and French Guiana (Amazon fires) is not ranked as a French department.
+const SPLIT = [
+  ['FRA', 'Guyane française', 'GUF', 'French Guiana', 'Guayana Francesa'], ['FRA', 'Guadeloupe', 'GLP', 'Guadeloupe', 'Guadalupe'],
+  ['FRA', 'Martinique', 'MTQ', 'Martinique', 'Martinica'], ['FRA', 'La Réunion', 'REU', 'Réunion', 'Reunión'], ['FRA', 'Mayotte', 'MYT', 'Mayotte', 'Mayotte'],
+  ['NOR', 'Svalbard', 'SJM', 'Svalbard and Jan Mayen', 'Svalbard y Jan Mayen'],
+];
+{
+  const bb = g => { let w = 180, s = 90, e = -180, n = -90; for (const p of g.type === 'Polygon' ? [g.coordinates] : g.coordinates) for (const [x, y] of p[0]) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); } return [w, s, e, n]; };
+  for (const [parent, unitName, code, en, es] of SPLIT) {
+    const u = adm1.features.find(f => f.properties.adm0_a3 === parent && f.properties.name === unitName);
+    if (!u || !u.geometry) { console.warn('split: unit not found', parent, unitName); continue; }
+    u.properties.adm0_a3 = code; u.properties.admin = en;
+    const [w, s0, e, n] = bb(u.geometry);
+    // Drop the same land from the parent's outline, then add it as a country.
+    const pf = world.features.find(f => f.properties.ADM0_A3 === parent);
+    if (pf && pf.geometry.type === 'MultiPolygon') {
+      pf.geometry.coordinates = pf.geometry.coordinates.filter(poly => { const [a, b, c, d] = bb({ type: 'Polygon', coordinates: poly }); const cx = (a + c) / 2, cy = (b + d) / 2; return !(cx > w - 0.5 && cx < e + 0.5 && cy > s0 - 0.5 && cy < n + 0.5); });
+    }
+    world.features.push({ type: 'Feature', properties: { ADM0_A3: code, ADMIN: en, NAME: en, NAME_EN: en, NAME_ES: es }, geometry: u.geometry });
+  }
+}
+
 // ------------------------------------------------------------ FIRMS country name -> Natural Earth ADM0_A3
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
 const OVERRIDES = {
@@ -33,10 +57,12 @@ const OVERRIDES = {
   'Hong Kong': 'HKG', 'Palestine': 'PSX', 'Kosovo': 'KOS', 'Curacao': 'CUW', 'Sint Maarten': 'SXM', 'Saint Helena': 'SHN',
   'Falkland Islands': 'FLK', 'French Southern and Antarctic Lands': 'ATF', 'Antarctica': 'ATA', 'Somalia': 'SOM',
   'Cyprus': 'CYP', 'Morocco': 'MAR', 'Saint Pierre and Miquelon': 'SPM', 'Vietnam': 'VNM', 'Syria': 'SYR', 'Iran': 'IRN',
+  'French Guiana': 'GUF', 'Guadeloupe': 'GLP', 'Martinique': 'MTQ', 'Reunion': 'REU', 'Mayotte': 'MYT', 'Svalbard and Jan Mayen': 'SJM',
   'Bolivia': 'BOL', 'Venezuela': 'VEN', 'Moldova': 'MDA', 'Taiwan': 'TWN', 'Guinea-Bissau': 'GNB', 'Pitcairn Islands': 'PCN',
 };
 // Natural Earth units FIRMS folds into a neighbour (FIRMS country attribution follows the parent).
-const NE_ALIAS = { SOL: 'SOM', CYN: 'CYP', SAH: 'MAR', KAB: 'KAZ', SCR: 'CHN', CNM: 'CYP', ESB: 'CYP', WSB: 'CYP', BJN: 'COL', SER: 'COL', USG: 'CUB', IOA: 'AUS', CSI: 'AUS', ATC: 'AUS', CLP: 'FRA', PGA: 'CHN', BRI: 'GBR' };
+// These keep their own name and outline on the map; they never rename or replace the parent country.
+const NE_ALIAS = { SOL: 'SOM', CYN: 'CYP', SAH: 'MAR', KAB: 'KAZ', CNM: 'CYP', ESB: 'CYP', WSB: 'CYP', BJN: 'COL', SER: 'COL', USG: 'CUB', IOA: 'AUS', CSI: 'AUS', ATC: 'AUS', CLP: 'FRA', BRI: 'BRA' };
 
 const neByA3 = new Map(), neByName = new Map();
 for (const f of world.features) {
@@ -51,6 +77,7 @@ for (const c of countries) {
   if (a3 && neByA3.has(a3)) { a3ByFid.set(c.id, a3); fidByA3.set(a3, c.id); }
   else unmatched.push(c.name);
 }
+const primaryFid = new Map(fidByA3); // Natural Earth unit -> the FIRMS country it IS (one to one)
 for (const [alias, parent] of Object.entries(NE_ALIAS)) if (!fidByA3.has(alias) && fidByA3.has(parent)) fidByA3.set(alias, fidByA3.get(parent));
 console.log(`FIRMS countries matched to Natural Earth: ${a3ByFid.size}/${countries.length}`);
 if (unmatched.length) console.log(`  without a Natural Earth polygon (outline falls back to OpenStreetMap): ${unmatched.join(', ')}`);
@@ -199,7 +226,7 @@ const worldOut = {
   type: 'FeatureCollection',
   features: world.features.filter(f => f.geometry && f.properties.ADM0_A3 !== 'ATA').map(f => {
     const p = f.properties;
-    return { type: 'Feature', properties: { a3: p.ADM0_A3, name: p.NAME_EN || p.ADMIN || p.NAME, name_es: p.NAME_ES || p.NAME, fid: fidByA3.has(p.ADM0_A3) ? fidByA3.get(p.ADM0_A3) : null, adm1: byA3.has(p.ADM0_A3) ? byA3.get(p.ADM0_A3).length : 0 }, geometry: roundGeom(f.geometry) };
+    return { type: 'Feature', properties: { a3: p.ADM0_A3, name: p.NAME_EN || p.ADMIN || p.NAME, name_es: p.NAME_ES || p.NAME, fid: primaryFid.has(p.ADM0_A3) ? primaryFid.get(p.ADM0_A3) : null, parent: !primaryFid.has(p.ADM0_A3) && fidByA3.has(p.ADM0_A3) ? fidByA3.get(p.ADM0_A3) : null, adm1: byA3.has(p.ADM0_A3) ? byA3.get(p.ADM0_A3).length : 0 }, geometry: roundGeom(f.geometry) };
   }),
 };
 fs.writeFileSync(path.join(OUT, 'world.json'), JSON.stringify(worldOut));

@@ -220,8 +220,8 @@ export function createGlobe(el, { onHover, onClick } = {}) {
     .showGraticules(false)
     .enablePointerInteraction(false) // no GPU ray-casting: hover and click are resolved below
     .pathPoints('pts').pathPointLat(p => p[0]).pathPointLng(p => p[1]).pathPointAlt(p => p[2])
-    .pathColor(() => 'rgba(236,232,223,0.95)')
-    .pathStroke(1.4).pathDashLength(0.02).pathDashGap(0.01).pathDashAnimateTime(16000)
+    .pathColor(d => d.c)
+    .pathStroke(d => d.w).pathDashLength(d => d.dash).pathDashGap(d => d.gap).pathDashAnimateTime(d => d.ms)
     .pathTransitionDuration(0)
     .ringLat('lat').ringLng('lng')
     .ringColor(() => t => `rgba(255,${Math.round(150 + 80 * (1 - t))},70,${Math.max(0, 1 - t)})`)
@@ -268,7 +268,7 @@ export function createGlobe(el, { onHover, onClick } = {}) {
     unit: new Lines(scene, R, 0.0032, 0xece8df, 0.6, 6),
     sub: new Lines(scene, R, 0.0036, 0xece8df, 0.48, 7),
   };
-  const selLines = new Lines(scene, R, 0.0042, 0xfff7c2, 0.9, 8);
+  const selLines = new Lines(scene, R, 0.0042, 0xfffbe6, 1, 8);
   const hoverLines = new Lines(scene, R, 0.0046, 0xfff7c2, 1, 9);
   const ghost = new Lines(scene, R, 0.005, 0xfbbf24, 0.95, 10, true);
   let feats = [], byKind = { context: [], country: [], unit: [], sub: [] }, fillFn = null, hover = null;
@@ -387,7 +387,10 @@ export function createGlobe(el, { onHover, onClick } = {}) {
       });
       selLines.set(arrs);
       const top = [...rings].sort((a, b) => b.length - a.length).slice(0, 8);
-      globe.pathsData(top.map(r => ({ pts: r })));
+      globe.pathsData([
+        ...top.map(r => ({ pts: r, c: 'rgba(255,214,102,0.30)', w: 7, dash: 1, gap: 0, ms: 0 })),       // glow
+        ...top.map(r => ({ pts: r, c: 'rgba(255,250,224,1)', w: 2.6, dash: 0.02, gap: 0.008, ms: 14000 })), // bright moving dashes
+      ]);
     },
     // Frame a bounding box [w, s, e, n]; the camera stays anchored on it.
     focusBBox(bbox, { ms = 1500, minAlt = 0.16, pad = 1.3 } = {}) {

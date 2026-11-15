@@ -395,3 +395,35 @@ button.fact:hover .fv { text-decoration: underline; text-decoration-color: var(-
   .top-actions > .rel { order: 5; }
   .hud-tl { max-width: 190px; }
 }
+
+/* Search takes the centre of the header, between the section menu and the actions. */
+.nav { margin-right: 0; }
+.top-actions { flex: 1 1 auto; min-width: 0; }
+.top-actions .search { flex: 1 1 auto; max-width: 560px; min-width: 160px; margin: 0 auto; }
+.search input, .search input:focus { width: 100%; padding-top: 8px; padding-bottom: 8px; font-size: 13.5px; }
+.search input:focus { border-color: var(--ember-2); box-shadow: 0 0 0 3px rgba(232, 89, 12, .14); }
+.dock-fresh { margin-top: 5px; font-size: 10.5px; color: var(--faint); }
+@media (max-width: 760px) { .top-actions .search { margin: 0; max-width: none; } }
+@media (min-width: 761px) { .top-actions .search { margin: 0 12px 0 0; max-width: none; } }
+
+/* Search: the icon and an ember line answer the focus, and the result list drops in. */
+.search svg { transition: color .2s, transform .35s cubic-bezier(.3, 1.6, .4, 1); }
+.search:focus-within svg { color: var(--ember-2); transform: translateY(-50%) scale(1.15) rotate(-12deg); }
+.search::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 2px; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #932667, #dd513a 45%, #fca50a); transform: scaleX(0); transform-origin: 0 50%; transition: transform .45s cubic-bezier(.3, 1, .3, 1); pointer-events: none; }
+.search:focus-within::after { transform: scaleX(1); }
+.search input::placeholder { color: var(--faint); transition: color .2s; }
+.search input:hover::placeholder { color: var(--muted); }
+.search-results.open { animation: drop-in .2s cubic-bezier(.3, 1, .3, 1); transform-origin: 50% 0; }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-6px) scaleY(.96); } to { opacity: 1; transform: none; } }
+.search-results button { transition: background .12s, padding-left .15s; }
+.search-results button:hover, .search-results button.active { padding-left: 14px; }
+.brand { cursor: pointer; }
+.aoi-head .meta { min-height: 1.4em; }
+@media (max-width: 760px) { .aoi-head .meta { min-height: 2.9em; } }
+
+/* Calendar first: the overview is only a heading and one sentence, the month figures follow the calendar. */
+#overview { padding-bottom: 18px; }
+#monthSec { padding-top: 6px; }
+#monthSec .kpis { margin-top: 0; border-top: 0; }
+#calendarSec { padding-top: 20px; }
+#calendarSec .card-head { margin-bottom: 12px; }

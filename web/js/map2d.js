@@ -87,8 +87,10 @@ export function createMap2D(el, { onHover, onClick } = {}) {
     if (outline.length) {
       ctx.beginPath();
       for (const r of outline) { if (r.length < 2) continue; ctx.moveTo(r[0][1], r[0][0]); for (let i = 1; i < r.length; i++) ctx.lineTo(r[i][1], r[i][0]); }
-      ctx.strokeStyle = 'rgba(5,5,5,0.75)'; ctx.lineWidth = lw(4.2); ctx.stroke();
-      ctx.strokeStyle = '#fff7c2'; ctx.lineWidth = lw(1.8); ctx.stroke();
+      ctx.strokeStyle = 'rgba(5,5,5,0.7)'; ctx.lineWidth = lw(5); ctx.stroke();
+      ctx.shadowColor = '#ffd666'; ctx.shadowBlur = 12 * dpr;                     // glow
+      ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = lw(2.6); ctx.stroke();
+      ctx.shadowBlur = 0;
     }
     if (hover) {
       const p = featPath(hover);

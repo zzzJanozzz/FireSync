@@ -5,13 +5,21 @@ import { haversineKm, isRecon, monthOf, yearOf, T_AQUA, T_SNPP } from './util.js
 
 const BASE = 'data/';
 const cache = new Map();
-function getJSON(path) {
-  if (!cache.has(path)) {
-    cache.set(path, fetch(BASE + path).then(r => {
-      if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
-      return r.json();
-    }).catch(e => { cache.delete(path); throw e; }));
+// A dropped connection or a 5xx from the host is retried twice (a flaky network at a demo should not
+// leave a click doing nothing). A 404 is final: some files are optional.
+async function fetchJSON(path, tries = 3) {
+  for (let i = 0; ; i++) {
+    let res = null;
+    try { res = await fetch(BASE + path); } catch (e) { if (i >= tries - 1) throw new Error(`${path}: network error`); }
+    if (res) {
+      if (res.ok) return res.json();
+      if (res.status < 500 || i >= tries - 1) throw new Error(`${path}: HTTP ${res.status}`);
+    }
+    await new Promise(r => setTimeout(r, 450 * (i + 1)));
   }
+}
+function getJSON(path) {
+  if (!cache.has(path)) cache.set(path, fetchJSON(path).catch(e => { cache.delete(path); throw e; }));
   return cache.get(path);
 }
 

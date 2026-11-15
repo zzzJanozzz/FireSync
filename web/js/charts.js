@@ -55,8 +55,8 @@ export function drawAnnual(c, { series, labels, lang, selYear, showNaive }) {
   const recEnd = String(yearOf(T_SNPP - 1));
   c.setOption({
     animationDuration: 900, animationEasing: 'cubicOut',
-    grid: { left: 52, right: 12, top: 30, bottom: 24 },
-    legend: { top: 0, right: 0, textStyle: { color: '#a49f94', fontSize: 11 }, itemWidth: 12, itemHeight: 8, data: [{ name: labels.harmonized, itemStyle: { color: '#e8590c' } }, labels.band, ...(showNaive ? [labels.naive] : [])] },
+    grid: { left: 52, right: 12, top: 46, bottom: 24 },
+    legend: { top: 0, left: 0, textStyle: { color: '#a49f94', fontSize: 11 }, itemWidth: 12, itemHeight: 8, data: [{ name: labels.harmonized, itemStyle: { color: '#e8590c' } }, labels.band, ...(showNaive ? [labels.naive] : [])] },
     tooltip: { ...TIP, trigger: 'axis', formatter: ps => {
       const i = ps[0].dataIndex;
       return `<b>${years[i]}</b><br>${labels.harmonized}: ${fmt(h[i], lang)}<br>${labels.band}: ${fmt(l[i], lang)} – ${fmt(l[i] + u[i], lang)}${showNaive ? `<br>${labels.naive}: ${fmt(nv[i], lang)}` : ''}`;
@@ -67,7 +67,7 @@ export function drawAnnual(c, { series, labels, lang, selYear, showNaive }) {
       { name: 'lo', type: 'line', data: l, stack: 'u', symbol: 'none', lineStyle: { opacity: 0 }, tooltip: { show: false } },
       { name: labels.band, type: 'line', data: u, stack: 'u', symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(181,101,29,0.22)' }, itemStyle: { color: 'rgba(181,101,29,0.6)' } },
       { name: labels.harmonized, type: 'bar', data: h, barWidth: '62%', itemStyle: { borderRadius: [3, 3, 0, 0], color: p => (years[p.dataIndex] === String(selYear) ? '#ece8df' : Number(years[p.dataIndex]) <= Number(recEnd) ? 'rgba(232,89,12,0.45)' : '#e8590c') },
-        markArea: { silent: true, itemStyle: { color: 'rgba(236,232,223,0.03)' }, label: { color: '#716c62', fontSize: 10, fontFamily: 'IBM Plex Sans' }, data: [[{ name: labels.reconEra, xAxis: '2001' }, { xAxis: recEnd }]] } },
+        markArea: { silent: true, itemStyle: { color: 'rgba(236,232,223,0.03)' }, label: { color: '#716c62', fontSize: 10, fontFamily: 'IBM Plex Sans', position: 'insideTop', distance: 3 }, data: [[{ name: labels.reconEra, xAxis: '2001' }, { xAxis: recEnd }]] } },
       ...(showNaive ? [{ name: labels.naive, type: 'line', data: nv, symbol: 'none', lineStyle: { color: '#82a9d4', width: 1.5, type: 'dashed' }, itemStyle: { color: '#82a9d4' } }] : []),
     ],
   }, true);

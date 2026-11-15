@@ -14,7 +14,7 @@ const state = {
   meta: null, countries: [], validation: null, medians: null, places: [],
   // Regionalization: click mode, choropleth fill, borders, the open country's provinces / states and their subdivisions.
   pickMode: 'region', fill: true, world: null, countriesH: null, regions: null, adm2: null, regionIndex: null,
-  a3ByFid: new Map(), fidByA3: new Map(), nameEs: new Map(), rankAll: false,
+  a3ByFid: new Map(), fidByA3: new Map(), nameEs: new Map(), nameEn: new Map(), rankAll: false,
   yFrom: 2000, yTo: null, // year range shown in the calendar and exported (null = latest year)
 };
 const L = () => I18N[state.lang];
@@ -69,6 +69,8 @@ async function boot() {
   step(100, L().ready);
   if (h && h.v === '2d') setMapView('2d');
   setTimeout(() => { $('intro').classList.add('done'); document.body.classList.add('ready'); }, 300);
+  stabilizeLayout();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(stabilizeLayout);
   const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.06 });
   document.querySelectorAll('.reveal').forEach(el => io.observe(el));
   setTimeout(() => { $('globeHint').style.opacity = '0'; }, 9000);
@@ -82,15 +84,22 @@ const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').to
 function initWorld(world) {
   if (!world) return;
   state.world = world;
-  state.worldFeats = world.features.map(f => ({ kind: 'country', id: `c:${f.properties.a3}`, a3: f.properties.a3, fid: f.properties.fid, name: f.properties.name, name_es: f.properties.name_es, adm1: f.properties.adm1, geometry: f.geometry }));
+  state.worldFeats = world.features.map(f => ({ kind: 'country', id: `c:${f.properties.a3}`, a3: f.properties.a3, fid: f.properties.fid, parent: f.properties.parent ?? null, name: f.properties.name, name_es: f.properties.name_es, adm1: f.properties.adm1, geometry: f.geometry }));
+  // fid: the FIRMS country this outline IS. parent: a territory that FIRMS counts inside another country
+  // (Ashmore and Cartier inside Australia, Western Sahara inside Morocco). A territory never renames its parent.
   for (const f of state.worldFeats) {
-    if (f.fid == null) continue;
-    if (!state.a3ByFid.has(f.fid) || f.adm1 > 1) state.a3ByFid.set(f.fid, f.a3);
-    if (!state.fidByA3.has(f.a3)) state.fidByA3.set(f.a3, f.fid);
+    if (f.fid == null) { if (f.parent != null) state.fidByA3.set(f.a3, f.parent); continue; }
+    state.a3ByFid.set(f.fid, f.a3);
+    state.fidByA3.set(f.a3, f.fid);
     if (f.name_es) state.nameEs.set(f.fid, f.name_es);
+    if (f.name) state.nameEn.set(f.fid, f.name);
   }
 }
-const cName = c => (c ? (state.lang === 'es' && state.nameEs.get(c.id)) || c.name : '');
+// Display names come from Natural Earth ("Russia", "Ivory Coast"); the FIRMS archive name is the fallback.
+const cName = c => (c ? (state.lang === 'es' ? state.nameEs.get(c.id) : state.nameEn.get(c.id)) || c.name : '');
+const featFid = f => (f.fid != null ? f.fid : f.parent);
+// Every name a country can be searched by: FIRMS archive name, Natural Earth English and Spanish names.
+const countryKey = c => c._key || (c._key = [c.name, state.nameEn.get(c.id), state.nameEs.get(c.id)].filter(Boolean).map(normTxt).join('|'));
 const countryByFid = fid => state.countries.find(c => c.id === fid);
 const uName = u => (state.lang === 'es' ? u.name_es || u.name : u.name_en || u.name);
 const uType = u => (state.lang === 'es' ? (L().typeEs[u.type_en] || u.type || u.type_en) : u.type_en || u.type) || L().fRegion;
@@ -174,7 +183,7 @@ function seriesStats(arr, t) {
 const featSeries = f => {
   if (f.kind === 'unit') return state.regions && state.regions.H[f.id];
   if (f.kind === 'sub') return state.adm2 && state.adm2.H && state.adm2.H[f.sub.id];
-  if ((f.kind === 'country' || f.kind === 'context') && state.countriesH && f.fid != null) return state.countriesH.H[f.fid];
+  if ((f.kind === 'country' || f.kind === 'context') && state.countriesH && featFid(f) != null) return state.countriesH.H[featFid(f)];
   return null;
 };
 function restyleRegions() {
@@ -211,6 +220,8 @@ function renderHover() {
     const st = seriesStats(featSeries(f), t);
     if (st) val = `${U.fmt(st.v, state.lang)} · ${isFinite(st.anom) ? U.pct(st.anom, state.lang) : l.newActivity}`;
     hint = state.pickMode === 'circle' ? tpl(l.tipCircleR, { r: state.radiusKm }) : f.kind === 'country' || f.kind === 'context' ? l.tipDrill : l.tipOpen;
+    // A territory without its own FIRMS record: the numbers are those of the country that includes it.
+    if (f.fid == null && f.parent != null && (f.kind === 'country' || f.kind === 'context')) hint = tpl(l.tipAlias, { c: cName(countryByFid(f.parent)) });
   } else {
     kind = l.kicker.circle; title = `${c.lat.toFixed(2)}°, ${c.lng.toFixed(2)}°`; hint = tpl(l.tipCircleR, { r: state.radiusKm });
   }
@@ -232,7 +243,7 @@ function onViewClick(f, c) {
   if (!f) { toast(L().oceanHint); return; }
   if (f.kind === 'unit') return pickRegion(state.regions.a3, f.id, { t: state.t });
   if (f.kind === 'sub') return pickSub(f.sub, { t: state.t });
-  const cty = f.fid != null ? countryByFid(f.fid) : null;
+  const cty = featFid(f) != null ? countryByFid(featFid(f)) : null;
   if (cty) return pickCountry(cty, { t: state.t });
   return pickPlace({ name: f.name, full: f.name, type: 'country', lat: c.lat, lon: c.lng, geom: f.geometry }, { t: state.t });
 }
@@ -469,18 +480,23 @@ async function selectMonth(t, { instant = false } = {}) {
   $('kpiRank').className = 'v ' + (st.rank <= 3 ? 'hot' : '');
   $('kpiRankSub').textContent = tpl(l.kRankSub, { n: st.nYears });
   const base = baselineYears().join('–');
-  let html;
-  if (!(st.val > 0)) html = tpl(l.insightZero, { area: state.aoi.name, month: l.monthsLong[m], year: y, base, med: U.fmt(st.med, state.lang) });
-  else {
-    html = tpl(l.insight, {
-      area: state.aoi.name, month: l.monthsLong[m], year: y, v: U.fmt(st.val, state.lang), anom: isFinite(st.anom) ? U.pct(st.anom, state.lang) : l.newActivity,
-      base, med: U.fmt(st.med, state.lang), rank: st.rank, n: st.nYears, rec: st.isMax ? l.insightRec : st.isMin ? l.insightLow : '',
+  // The sentence in any language (the other ones are only measured, so the block keeps its height on a language switch).
+  const sentence = g => {
+    const k = I18N[g];
+    if (!(st.val > 0)) return tpl(k.insightZero, { area: state.aoi.name, month: k.monthsLong[m], year: y, base, med: U.fmt(st.med, g) });
+    let h = tpl(k.insight, {
+      area: state.aoi.name, month: k.monthsLong[m], year: y, v: U.fmt(st.val, g), anom: isFinite(st.anom) ? U.pct(st.anom, g) : k.newActivity,
+      base, med: U.fmt(st.med, g), rank: st.rank, n: st.nYears, rec: st.isMax ? k.insightRec : st.isMin ? k.insightLow : '',
     });
-    if (U.isRecon(t) && state.view === 'harmonized') html += tpl(l.insightRecon, { sat: U.refSatOf(t), lo: U.fmt(st.lo, state.lang), hi: U.fmt(st.hi, state.lang) });
-  }
-  $('insight').innerHTML = html + '<span id="insightBurn"></span>';
+    if (U.isRecon(t) && state.view === 'harmonized') h += tpl(k.insightRecon, { sat: U.refSatOf(t), lo: U.fmt(st.lo, g), hi: U.fmt(st.hi, g) });
+    return h;
+  };
+  $('insight').innerHTML = sentence(state.lang) + '<span id="insightBurn"></span>';
+  state.insightAll = Object.fromEntries(Object.keys(I18N).map(g => [g, sentence(g)]));
+  state.burnHa = null;
+  fitInsight();
   const part = partialInfo();
-  $('partialNote').textContent = part ? tpl(l.partial, { d: part.date }) : '';
+  if (part) put($('partialNote'), 'partial', { d: part.date }); else { $('partialNote').textContent = ''; $('partialNote').style.minHeight = ''; }
   $('hudMonth').textContent = `${l.months[m]} ${y}`;
   $('hudValue').textContent = `${U.fmt(st.val, state.lang)} · ${isFinite(st.anom) ? U.pct(st.anom, state.lang) : ''}`;
   $('hudArea').textContent = state.aoi.name;
@@ -568,12 +584,12 @@ function renderPointsLegend(res, vmax) {
   state.lastPts = [res, vmax];
   const flat = state.map === '2d';
   $('ptsTitle').textContent = flat ? l.ptsTitle2d : l.ptsTitle;
-  $('ptsBody').textContent = tpl(flat ? l.ptsBody2d : l.ptsBody, { km: res === 1 ? '110' : '28' });
+  put($('ptsBody'), flat ? 'ptsBody2d' : 'ptsBody', { km: res === 1 ? '110' : '28' });
   $('ptsMax').textContent = vmax > 0 ? U.fmt(vmax, state.lang) : '—';
   const fillOn = state.fill && (a.kind === 'world' ? !!state.countriesH : !!(state.regions && (a.kind === 'country' || a.kind === 'region' || a.kind === 'sub') && a.a3 === state.regions.a3));
   const subsOn = (a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid && !state.adm2.none;
   $('fillKey').hidden = !fillOn;
-  $('fillKey').textContent = a.kind === 'world' ? l.fillKeyWorld : subsOn ? tpl(l.fillKeySubs, { x: adm2Kind(false).toLowerCase() }) : l.fillKeyRegions;
+  put($('fillKey'), a.kind === 'world' ? 'fillKeyWorld' : subsOn ? 'fillKeySubs' : 'fillKeyRegions', { x: adm2Kind(false).toLowerCase() });
 }
 
 // Burned area (MODIS MCD64A1 via Planetary Computer) for the selected area and month.
@@ -591,7 +607,7 @@ function updateBurned() {
       U.animateNumber(el, r.ha, { lang: state.lang, format: v => U.fmt(Math.round(v / 10) * 10, state.lang) });
       sub.textContent = tpl(l.burnSub, { p: U.fmt(r.fraction * 100, state.lang, r.fraction < 0.01 ? 2 : 1) });
       const ib = $('insightBurn');
-      if (ib && r.ha >= 10) ib.innerHTML = tpl(l.insightBurn, { ha: U.fmt(Math.round(r.ha / 10) * 10, state.lang) });
+      if (ib && r.ha >= 10) { ib.innerHTML = tpl(l.insightBurn, { ha: U.fmt(Math.round(r.ha / 10) * 10, state.lang) }); state.burnHa = Math.round(r.ha / 10) * 10; fitInsight(); }
     } else { el.textContent = '—'; sub.textContent = r.status === 'unavailable' ? l.burnNA : r.status === 'toolarge' ? l.burnBig : l.burnErr; }
   }, 500);
 }
@@ -663,7 +679,7 @@ function renderAOIHead() {
     $('freshTxt').textContent = tpl(l.fresh, { d: `${fd} ${l.months[fm - 1]} ${fy}` });
     $('fresh').title = l.freshTitle;
   }
-  $('banner').textContent = tpl(l.banner, { last: lastLbl });
+  put($('banner'), 'banner', { last: lastLbl });
   const chips = $('presetChips');
   chips.innerHTML = '';
   const k = document.createElement('span'); k.className = 'chip label'; k.textContent = l.presets; chips.appendChild(k);
@@ -675,13 +691,82 @@ function renderAOIHead() {
   }
 }
 
+// ------------------------------------------------------------ same page shape in every language
+// A text built from a template: written in the current language, with room for its longest translation.
+function put(el, key, vars = {}) {
+  const texts = Object.keys(I18N).map(g => tpl(I18N[g][key], vars)), sig = `${texts.join('|')}|${el.clientWidth}`;
+  if (el._sig !== sig && el.offsetParent) {
+    el._sig = sig; el.style.minHeight = '';
+    let h = 0;
+    for (const x of texts) { el.textContent = x; h = Math.max(h, el.getBoundingClientRect().height); }
+    el.style.minHeight = `${Math.ceil(h)}px`;
+  }
+  el.textContent = tpl(L()[key], vars);
+}
+// The summary sentence reserves the height of its longest translation.
+function fitInsight() {
+  const el = $('insight');
+  if (!state.insightAll || !el.clientWidth) return;
+  let ghost = $('insightGhost');
+  if (!ghost) {
+    ghost = document.createElement('p');
+    ghost.id = 'insightGhost'; ghost.className = 'insight'; ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.cssText = 'position:absolute;left:0;top:0;margin:0;visibility:hidden;pointer-events:none';
+    el.parentElement.appendChild(ghost);
+  }
+  ghost.style.width = `${el.clientWidth}px`;
+  let h = 0;
+  for (const g of Object.keys(I18N)) {
+    ghost.innerHTML = state.insightAll[g] + (state.burnHa != null ? tpl(I18N[g].insightBurn, { ha: U.fmt(state.burnHa, g) }) : '');
+    h = Math.max(h, ghost.offsetHeight);
+  }
+  el.style.minHeight = `${h}px`;
+}
+// Every translated label reserves the room of its longest version: buttons and menu entries keep their width,
+// paragraphs keep their height, and the long texts written once per language (method, limitations) match.
+function stabilizeLayout() {
+  const langs = Object.keys(I18N), WIDE = '.topbar, .hud-tr, .sel-actions, .controls, .downloads, .rc-head';
+  const jobs = [];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const texts = langs.map(g => I18N[g][el.dataset.i18n]).filter(x => typeof x === 'string');
+    if (texts.length < 2 || texts.every(x => x === texts[0]) || !el.offsetParent) return;
+    el.style.minWidth = ''; el.style.minHeight = '';
+    jobs.push({ el, texts, wide: !!el.closest(WIDE) });
+  });
+  for (const j of jobs) {
+    const cur = j.el.textContent;
+    j.w = 0; j.h = 0;
+    for (const x of j.texts) { j.el.textContent = x; const r = j.el.getBoundingClientRect(); j.w = Math.max(j.w, r.width); j.h = Math.max(j.h, r.height); }
+    j.el.textContent = cur;
+  }
+  for (const j of jobs) {
+    if (j.wide) {
+      if (getComputedStyle(j.el).display === 'inline') j.el.style.display = 'inline-block';
+      j.el.style.minWidth = `${Math.ceil(j.w)}px`; j.el.style.textAlign = 'center';
+    } else j.el.style.minHeight = `${Math.ceil(j.h)}px`;
+  }
+  const groups = new Map();
+  document.querySelectorAll('[data-lang]').forEach(el => {
+    const key = el.parentElement, cls = el.className || '-';
+    if (!groups.has(key)) groups.set(key, new Map());
+    if (!groups.get(key).has(cls)) groups.get(key).set(cls, []);
+    groups.get(key).get(cls).push(el);
+  });
+  for (const byClass of groups.values()) for (const els of byClass.values()) {
+    let h = 0;
+    for (const el of els) { const was = el.hidden; el.hidden = false; el.style.minHeight = ''; h = Math.max(h, el.offsetHeight); el.hidden = was; }
+    if (h) for (const el of els) el.style.minHeight = `${h}px`;
+  }
+  fitInsight();
+}
+
 // One level up from the current selection (the "back" button and the Escape key).
 function parentTarget() {
   const a = state.aoi;
   if (a.kind === 'sub') return { label: a.unit ? uName(a.unit) : a.parentName, go: () => pickRegion(a.a3, a.uid, { t: state.t }) };
   if (a.kind === 'region' && a.country) return { label: cName(a.country), go: () => pickCountry(a.country, { t: state.t }) };
   if (a.kind === 'circle' || a.kind === 'polygon') {
-    const f = state.worldFeats && a.lat != null ? pickFeature(state.worldFeats, a.lat, a.lon) : null, c = f && f.fid != null ? countryByFid(f.fid) : null;
+    const f = state.worldFeats && a.lat != null ? pickFeature(state.worldFeats, a.lat, a.lon) : null, c = f && featFid(f) != null ? countryByFid(featFid(f)) : null;
     if (c) return { label: cName(c), go: () => pickCountry(c, { t: state.t }) };
   }
   return { label: L().world, go: () => pickWorld({ t: state.t }) };
@@ -802,7 +887,7 @@ function renderRanking() {
   const inProv = (a.kind === 'region' || a.kind === 'sub') && state.adm2 && state.adm2.uid === a.uid && !state.adm2.none && state.adm2.H;
   const where = a.kind === 'country' ? a.name : inProv ? (a.unit ? uName(a.unit) : a.name) : cName(a.country) || '';
   $('rankTitle').textContent = a.kind === 'world' ? tpl(l.rankWorld, { m: mo }) : tpl(l.rankRegions, { m: mo, c: where });
-  $('rankSub').textContent = tpl(l.rankSub, { n: U.fmt(active, state.lang), total: U.fmt(rows.length, state.lang) });
+  put($('rankSub'), 'rankSub', { n: U.fmt(active, state.lang), total: U.fmt(rows.length, state.lang) });
   const top = rows[0] && rows[0].st.v > 0 ? rows[0].st.v : 1;
   const limit = state.rankAll ? rows.length : 8;
   let shown = rows.slice(0, limit);
@@ -867,13 +952,13 @@ function drawValidation() {
     <div class="row naive"><span>${l.naiveF}</span><b>${f(n)}</b></div></div>`;
   const p = x => `${U.fmt(x * 100, state.lang, 1)}%`;
   $('metrics').innerHTML = row(l.mdape, v.engine.mdape, v.naive.mdape, p) + row(l.bias, v.engine.bias, v.naive.bias, x => U.pct(x, state.lang)) + row(l.rlog, v.engine.rlog, v.naive.rlog, x => U.fmt(x, state.lang, 3));
-  $('pairsNote').textContent = tpl(l.pairs, { n: U.fmt(v.pairs, state.lang) });
+  put($('pairsNote'), 'pairs', { n: U.fmt(v.pairs, state.lang) });
   const h = state.handover;
   $('handover').hidden = !h;
   if (h) {
     const one = (k, val, sub) => `<div class="metric"><div class="k">${k}</div><div class="row"><span>${sub}</span><b>${val}</b></div></div>`;
     $('handMetrics').innerHTML = one(l.handErr, p(h.mdape), l.engine) + one(l.handBias, U.pct(h.bias, state.lang), `NOAA-20 × ${U.fmt(h.factor, state.lang, 3)}`) + one(l.handWithin, `${U.fmt(h.within10 * 100, state.lang)}%`, tpl(l.handWithin20, { p: U.fmt(h.within20 * 100, state.lang) }));
-    $('handNote').textContent = tpl(l.handPairs, { n: U.fmt(h.pairs, state.lang), o: U.fmt(h.observed, state.lang), q: U.fmt(h.predicted, state.lang) });
+    put($('handNote'), 'handPairs', { n: U.fmt(h.pairs, state.lang), o: U.fmt(h.observed, state.lang), q: U.fmt(h.predicted, state.lang) });
   }
   drawScatter(charts.scatter, { validation: v, labels: { engine: l.engine, naive: l.naiveF, obs: l.obs, pred: l.pred } });
   drawDrift(charts.drift, { validation: v, lang: state.lang, labels: { obsViirs: l.obsViirs, predAqua: l.predAqua, driftZone: l.driftZone } });
@@ -1003,7 +1088,7 @@ function setupUI() {
   };
   $('yFrom').addEventListener('change', onYears);
   $('yTo').addEventListener('change', onYears);
-  const setLang = lang => { state.lang = lang; applyLang(); if (state.aoi.kind === 'world') state.aoi.name = L().world; populateCountrySelect(); renderAOIHead(); renderEras(); selectMonth(state.t); drawValidation(); };
+  const setLang = lang => { state.lang = lang; applyLang(); if (state.aoi.kind === 'world') state.aoi.name = L().world; populateCountrySelect(); renderAOIHead(); renderEras(); selectMonth(state.t); drawValidation(); stabilizeLayout(); searchHint(); };
   $('langEn').addEventListener('click', () => setLang('en'));
   $('langEs').addEventListener('click', () => setLang('es'));
   $('btnWorld').addEventListener('click', () => pickWorld({ t: state.t }));
@@ -1070,6 +1155,47 @@ function setupUI() {
   });
   setupNav();
 
+  // The logo works like on any site: back to the start. World, latest month, no filters, 3D, top of the page.
+  // The language stays as chosen.
+  document.querySelector('.brand').addEventListener('click', e => {
+    e.preventDefault();
+    if (state.playing) stop();
+    Object.assign(state, { mode: 'counts', view: 'harmonized', baseline: 'viirs', yFrom: 2000, yTo: null, fill: true, rankAll: false, userRotate: true, places: [] });
+    $('mCounts').classList.add('on'); $('mAnom').classList.remove('on');
+    $('vHarm').classList.add('on'); $('vNaive').classList.remove('on');
+    $('baseSel').value = 'viirs';
+    $('btnFill').classList.add('on'); $('btnFill').setAttribute('aria-pressed', 'true');
+    $('search').value = ''; $('searchResults').classList.remove('open');
+    $('popLatLon').classList.remove('open');
+    fillYears();
+    if (state.map !== '3d') setMapView('3d');
+    if (state.pickMode !== 'region') { state.aoi = { kind: 'world' }; setPickMode('region'); }
+    pickWorld({ t: state.meta.months - 1 });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // Search box: while it is empty and idle, it types examples of what can be searched.
+  let hintT = 0, hintI = 0;
+  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  searchHint = () => {
+    clearTimeout(hintT);
+    const inp = $('search'), base = L().search, list = L().searchEx || [];
+    inp.placeholder = base;
+    if (still || !list.length) return;
+    const run = (word, n, back) => {
+      if (document.activeElement === inp || inp.value) { inp.placeholder = base; hintT = setTimeout(() => run(list[hintI % list.length], 0, false), 2500); return; }
+      inp.placeholder = n ? `${word.slice(0, n)}${n < word.length && !back ? '▏' : ''}` : base;
+      if (!back && n < word.length) hintT = setTimeout(() => run(word, n + 1, false), 75);
+      else if (!back) hintT = setTimeout(() => run(word, n, true), 1700);
+      else if (n > 0) hintT = setTimeout(() => run(word, n - 1, true), 28);
+      else { hintI++; hintT = setTimeout(() => run(list[hintI % list.length], 0, false), 1400); }
+    };
+    hintT = setTimeout(() => run(list[hintI % list.length], 0, false), 3200);
+  };
+  searchHint();
+  let fitT;
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(stabilizeLayout, 220); });
+
   // Region filters.
   populateCountrySelect();
   $('selCountry').addEventListener('change', e => {
@@ -1119,6 +1245,10 @@ function setupUI() {
     if (state.regionIndex || ensureIndex.p) return;
     ensureIndex.p = D.getRegionIndex().then(ix => {
       state.regionIndex = ix.units.map(r => ({ id: r[0], a3: r[1], name: r[2], name_en: r[3] || r[2], name_es: r[4] || r[2], type_en: r[5], key: normTxt([r[2], r[3], r[4]].join(' ')) }));
+      // A territory that is its own country (French Guiana) has one unit with the same name: list it once, as a country.
+      const perCountry = new Map();
+      for (const r of state.regionIndex) perCountry.set(r.a3, (perCountry.get(r.a3) || 0) + 1);
+      for (const r of state.regionIndex) r.solo = perCountry.get(r.a3) === 1 && state.fidByA3.has(r.a3);
       if (document.activeElement === input) renderList();
     }).catch(() => {});
   };
@@ -1131,12 +1261,12 @@ function setupUI() {
       out.push({ r, score: (i === 0 || r.key[i - 1] === ' ' ? 0 : 1) });
     }
     out.sort((x, y) => x.score - y.score || x.r.name.length - y.r.name.length);
-    return out.slice(0, 7).map(x => ({ kind: 'region', r: x.r }));
+    return out.filter(x => !x.r.solo).slice(0, 7).map(x => ({ kind: 'region', r: x.r }));
   };
   const regionCountry = r => { const fid = state.fidByA3.get(r.a3); const c = fid != null ? countryByFid(fid) : null; return c ? cName(c) : r.a3; };
   const renderList = () => {
     const raw = input.value.trim(), q = normTxt(raw);
-    const cs = (q ? state.countries.filter(c => normTxt(c.name).includes(q) || normTxt(state.nameEs.get(c.id) || '').includes(q)) : state.countries).slice(0, q ? 5 : 12).map(c => ({ kind: 'country', c }));
+    const cs = (q ? state.countries.filter(c => countryKey(c).includes(q)) : state.countries).slice(0, q ? 5 : 12).map(c => ({ kind: 'country', c }));
     list = [...cs, ...regionMatches(raw), ...state.places.map(p => ({ kind: 'place', p }))];
     if (q.length >= 2) list.push({ kind: 'search', q: raw });
     box.innerHTML = list.map((it, i) => {
@@ -1172,7 +1302,7 @@ function setupUI() {
     else if (e.key === 'Enter') {
       e.preventDefault();
       const q = input.value.trim();
-      const exact = state.countries.find(c => normTxt(c.name) === normTxt(q) || normTxt(state.nameEs.get(c.id) || '') === normTxt(q));
+      const exact = state.countries.find(c => countryKey(c).split('|').includes(normTxt(q)));
       if (list[active] && (list[active].kind !== 'search' || !exact)) choose(list[active]);
       else if (exact) choose({ kind: 'country', c: exact });
     } else if (e.key === 'Escape') { box.classList.remove('open'); input.blur(); }
@@ -1187,8 +1317,15 @@ function setupUI() {
   renderEras();
 }
 
+let searchHint = () => {};
 let toastT;
 function toast(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2000); }
+
+// A data file that still fails after the automatic retries: say so, the click was not ignored.
+window.addEventListener('unhandledrejection', e => {
+  const msg = String((e.reason && e.reason.message) || '');
+  if (/HTTP \d|network error|Failed to fetch/.test(msg)) { console.warn(msg); toast(L().netErr); }
+});
 
 boot().catch(err => {
   console.error(err);

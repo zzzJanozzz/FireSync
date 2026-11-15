@@ -250,7 +250,51 @@ Un 2 a 5 % parece poco, pero el punto de partida de un proyecto cualquiera es mu
 4. ¿Qué parte hicieron ustedes y qué parte la IA?
 5. ¿Quién lo usaría mañana y para qué?
 
-## 5. Preguntas para el equipo
+## 5. Tercera ronda (domingo 15): datos, idioma y terminación
+
+### 5.1 El error de "Islas Ashmore y Cartier"
+
+Los números estaban bien. Lo que estaba mal eran las **etiquetas**.
+
+NASA FIRMS cuenta algunos territorios dentro de otro país: Ashmore y Cartier dentro de Australia, el Sahara Occidental dentro de Marruecos, Somalilandia dentro de Somalia. En el mapa esos territorios tienen su propio contorno. El código tomaba el nombre en español del último contorno que apuntaba al país, así que:
+
+| País real | Lo que mostraba en español | Efecto extra |
+|---|---|---|
+| Australia | Islas Ashmore y Cartier | Al abrir Australia aparecían 2 "provincias" (islas del Índico) en lugar de sus 11 estados y territorios |
+| Marruecos | Sahara Occidental | — |
+| Somalia | Somalilandia | — |
+
+Ahora cada país tiene un único contorno propio y los territorios solo apuntan a su país. Al pasar el cursor sobre un territorio, la lectura dice "NASA FIRMS cuenta este territorio dentro de Australia".
+
+Al revisar apareció una segunda mezcla: Natural Earth lista a Guayana Francesa, Guadalupe, Martinica, Reunión y Mayotte como departamentos de Francia, y a Svalbard como condado de Noruega, pero FIRMS los registra como países aparte. Francia mostraba 101 departamentos y la Guayana Francesa (fuego amazónico) aparecía en su ranking. Ahora son países, y Francia tiene sus 96 departamentos metropolitanos.
+
+Además, los nombres en inglés pasaron de los del archivo de FIRMS ("Russian Federation", "Cote d Ivoire", "Lao PDR") a los habituales ("Russia", "Ivory Coast", "Laos"). El buscador encuentra los tres nombres.
+
+### 5.2 Auditoría de datos (se puede volver a correr)
+
+`node scripts/audit_regions.mjs web/data` compara el registro contra una fuente independiente, los bordes de Natural Earth:
+
+- **232 de 234** países de FIRMS tienen contorno propio y único. Los dos que faltan son la Antártida y las Islas Ultramarinas Menores de EE. UU.
+- **99,97 %** de los focos de 2025 cae dentro del contorno del país al que FIRMS los asigna. Las excepciones son islas más chicas que una celda (Bahamas, Baréin, Nueva Caledonia).
+- La suma de los países coincide con la serie mundial con una diferencia máxima de **0,03 %**.
+- En 136 de 142 países, la suma de las provincias queda entre 85 % y 115 % del total del país. Las seis excepciones son países chicos donde las celdas de borde pesan mucho (Lesoto, Ruanda, Croacia, Bielorrusia, Emiratos Árabes, Guayana Francesa). Es la limitación de borde que ya figura en la app.
+
+**Contraste externo.** INPE informó unos 278 mil focos en Brasil en 2024 con su satélite de referencia, Aqua. El conteo crudo de Aqua en FireSync para ese año da 299.599, un 7,6 % más. La diferencia va en el sentido esperado: FireSync incluye la pasada nocturna e INPE usa la de la tarde. Las notas de prensa dan 278.229 o 278.299; conviene confirmar la cifra en BDQueimadas antes de citarla.
+
+### 5.3 Otros cambios de esta ronda
+
+| Pedido | Qué se hizo |
+|---|---|
+| Que el idioma no cambie la forma | Cada texto traducido reserva el lugar de su versión más larga. Medido en 26 bloques de la página, en escritorio y en celular: **ninguno cambia de tamaño** al pasar de inglés a español |
+| Buscador | Ocupa el centro de la barra. Cuando está vacío escribe solo ejemplos de lo que se puede buscar. Al enfocarlo, el ícono gira, aparece una línea con la rampa de fuego y la lista se despliega con una animación corta |
+| Logo | Hacer clic en FireSync vuelve al inicio: Mundo, último mes, sin filtros, vista 3D, arriba de todo. El idioma se conserva |
+| Contorno de la selección | Línea punteada más ancha y clara, con un halo dorado debajo, en 3D y en 2D |
+| Fecha de los datos | Salió de la barra superior. Quedó en letra chica bajo la línea de tiempo |
+| Red inestable | Si un archivo falla, la página reintenta dos veces sola. Si sigue fallando, avisa |
+
+**Unidades.** Quedan en kilómetros y hectáreas en los dos idiomas. Es el sistema que usan NASA, FIRMS y la literatura científica, y el público en inglés del proyecto es internacional, no solo de Estados Unidos. Cambiar a millas y acres según el idioma agregaría una fuente de errores sin sumar puntos.
+
+## 6. Preguntas para el equipo
 
 1. **Publicar.** Los cambios de esta ronda están en la laptop, sin commit. ¿Hago commit y push a `main`? Eso actualiza la versión pública.
 2. **Preset de la demo.** ¿Cambio "Chilecito · AR" (círculo de 40 km) por el departamento Chilecito? Da +1.508 % y es más fácil de explicar.
