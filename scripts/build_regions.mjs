@@ -2,7 +2,7 @@
 // public domain), joined to the FireSync record. For each of the ~4,600 provinces / states it sums
 // the harmonized 0.25-degree cells whose centre falls inside the shape, so the web app can draw a
 // province choropleth, rank provinces and open any province instantly.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 //
 // Usage (after scripts/build_regions.sh has simplified the Natural Earth shapefiles):
 //   node scripts/build_regions.mjs data/raw/ne web/data
@@ -226,7 +226,7 @@ const worldOut = {
   type: 'FeatureCollection',
   features: world.features.filter(f => f.geometry && f.properties.ADM0_A3 !== 'ATA').map(f => {
     const p = f.properties;
-    return { type: 'Feature', properties: { a3: p.ADM0_A3, name: p.NAME_EN || p.ADMIN || p.NAME, name_es: p.NAME_ES || p.NAME, fid: primaryFid.has(p.ADM0_A3) ? primaryFid.get(p.ADM0_A3) : null, parent: !primaryFid.has(p.ADM0_A3) && fidByA3.has(p.ADM0_A3) ? fidByA3.get(p.ADM0_A3) : null, adm1: byA3.has(p.ADM0_A3) ? byA3.get(p.ADM0_A3).length : 0 }, geometry: roundGeom(f.geometry) };
+    return { type: 'Feature', properties: { a3: p.ADM0_A3, name: (p.ADM0_A3 === 'CHN' ? 'China' : null) || p.NAME_EN || p.ADMIN || p.NAME, name_es: p.NAME_ES || p.NAME, fid: primaryFid.has(p.ADM0_A3) ? primaryFid.get(p.ADM0_A3) : null, parent: !primaryFid.has(p.ADM0_A3) && fidByA3.has(p.ADM0_A3) ? fidByA3.get(p.ADM0_A3) : null, adm1: byA3.has(p.ADM0_A3) ? byA3.get(p.ADM0_A3).length : 0 }, geometry: roundGeom(f.geometry) };
   }),
 };
 fs.writeFileSync(path.join(OUT, 'world.json'), JSON.stringify(worldOut));

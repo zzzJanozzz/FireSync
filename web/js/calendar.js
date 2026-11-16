@@ -1,5 +1,5 @@
 // FireSync burning-activity calendar (year x month heatmap with provenance and anomalies).
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import { yearOf, monthOf, tOf, isRecon, inferno, diverging, textOn, compact, median, logScale, T_SNPP } from './util.js';
 
 export class Calendar {

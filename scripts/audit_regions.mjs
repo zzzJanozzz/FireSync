@@ -1,6 +1,6 @@
 // FireSync data audit: checks the country attribution of the record against an independent source
 // (Natural Earth borders) and the internal consistency of every aggregation level.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 //
 // Usage: node scripts/audit_regions.mjs web/data
 import fs from 'node:fs';

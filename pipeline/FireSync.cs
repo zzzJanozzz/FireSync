@@ -1,5 +1,5 @@
 // FireSync data pipeline: harmonizes NASA FIRMS MODIS and VIIRS active-fire hotspots.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md in the repository root.
+// Developed with SI (Claude, Anthropic) assistance.
 // License: Apache-2.0.
 //
 // Build (Windows, no install needed):

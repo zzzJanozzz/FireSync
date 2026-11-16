@@ -15,6 +15,8 @@ tools/
 *.part
 
 # Internal team files kept out of the public repository
+internal/
+.claude/
 message.txt
 WebNasa2.html
 globo_terr_queo_3d_interactivo.html

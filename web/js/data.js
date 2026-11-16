@@ -1,6 +1,6 @@
 // FireSync data access: static harmonized products (pipeline/FireSync.cs), place search (OpenStreetMap
 // Nominatim) and burned area (MODIS MCD64A1 via Microsoft Planetary Computer).
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import { haversineKm, isRecon, monthOf, yearOf, T_AQUA, T_SNPP } from './util.js';
 
 const BASE = 'data/';

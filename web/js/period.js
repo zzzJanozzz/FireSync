@@ -1,7 +1,7 @@
 // FireSync period analytics: any region + any date range -> summary, chart and downloads.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import * as U from './util.js';
-import { I18N, tpl } from './i18n.js?v=20261115c';
+import { I18N, tpl } from './i18n.js?v=20261116a';
 
 const $ = id => document.getElementById(id);
 
@@ -16,7 +16,7 @@ export function createPeriod(ctx) {
   const clampRange = () => {
     const n = lastT();
     let a = state.pFrom, b = state.pTo;
-    if (a == null || b == null) { b = n; a = Math.max(0, n - 11); }
+    if (a == null || b == null) { b = ctx.lastComplete ? ctx.lastComplete() : n; a = Math.max(0, b - 11); }
     a = Math.max(0, Math.min(n, a)); b = Math.max(0, Math.min(n, b));
     if (a > b) [a, b] = [b, a];
     state.pFrom = a; state.pTo = b;
@@ -166,7 +166,7 @@ export function createPeriod(ctx) {
 
   function presetRange(p) {
     const n = lastT(), ly = U.yearOf(n);
-    if (p === '12') return [Math.max(0, n - 11), n];
+    if (p === '12') { const e = ctx.lastComplete ? ctx.lastComplete() : n; return [Math.max(0, e - 11), e]; }
     if (p === 'ytd') return [Math.max(0, U.tOf(ly, 0)), n];
     if (p === 'prev') return [U.tOf(ly - 1, 0), U.tOf(ly - 1, 11)];
     if (p === 'viirs') return [U.T_SNPP, U.tOf(2025, 11)];

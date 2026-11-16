@@ -1,4 +1,4 @@
-// FireSync charts (Apache ECharts). Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// FireSync charts (Apache ECharts). Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 /* global echarts */
 import { tOf, yearOf, quantile, compact, fmt, T_SNPP, T_AQUA } from './util.js';
 

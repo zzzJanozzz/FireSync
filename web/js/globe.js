@@ -3,7 +3,7 @@
 // state and department borders plus a monthly choropleth) that costs a handful of draw calls:
 // borders are merged line meshes, fills are canvas textures on sphere patches, and hover / click are
 // resolved on the CPU with a ray-sphere test and point-in-polygon instead of GPU ray-casting.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.171.0/+esm';
 import Globe from 'https://cdn.jsdelivr.net/npm/globe.gl@2.34.2/+esm';
 import { fire } from './util.js';

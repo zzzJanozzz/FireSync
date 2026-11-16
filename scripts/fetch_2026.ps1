@@ -1,5 +1,5 @@
 # Fetch 2026 global FIRMS hotspots through the area API (5-day windows), respecting the MAP_KEY
-# transaction budget. Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md.
+# transaction budget. Developed with SI (Claude, Anthropic) assistance.
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\fetch_2026.ps1 [-End 2026-11-14]
 param([string]$End = (Get-Date).ToString('yyyy-MM-dd'))
 $root = Split-Path $PSScriptRoot -Parent

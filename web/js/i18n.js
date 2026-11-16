@@ -1,5 +1,5 @@
 // FireSync UI strings (English required for judging; Spanish for Argentine users).
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 export const I18N = {
   en: {
     tagline: "The continuity engine for Earth's fire record",
@@ -81,6 +81,7 @@ export const I18N = {
     srcObs: 'Observed · {sat}', srcRecon: 'Reconstructed from {sat}',
     insight: '{area}, {month} {year}: <b>{v}</b> VIIRS-equivalent hotspots, <b>{anom}</b> vs the {base} median for {month} ({med}). Rank <b>#{rank}</b> of {n} years{rec}.',
     insightRec: ', the highest on record', insightLow: ', the lowest on record',
+    insightPartial: ' Partial month: data through {d}, so the rank and anomaly are provisional.',
     insightRecon: ' Reconstructed from {sat} MODIS (likely range {lo}–{hi}).',
     insightZero: '{area}, {month} {year}: no hotspots detected, while the {base} median for {month} is {med}.',
     areaNear: 'Area near {c}', areaAt: 'Area at {lat}, {lon}',
@@ -181,6 +182,7 @@ export const I18N = {
     srcObs: 'Observado · {sat}', srcRecon: 'Reconstruido desde {sat}',
     insight: '{area}, {month} de {year}: <b>{v}</b> focos equivalentes VIIRS, <b>{anom}</b> frente a la mediana {base} de {month} ({med}). Puesto <b>#{rank}</b> de {n} años{rec}.',
     insightRec: ', el más alto del registro', insightLow: ', el más bajo del registro',
+    insightPartial: ' Mes incompleto: datos hasta el {d}, así que el puesto y la anomalía son provisorios.',
     insightRecon: ' Reconstruido desde {sat} MODIS (rango probable {lo}–{hi}).',
     insightZero: '{area}, {month} de {year}: sin focos detectados; la mediana {base} de {month} es {med}.',
     areaNear: 'Zona cerca de {c}', areaAt: 'Zona en {lat}, {lon}',

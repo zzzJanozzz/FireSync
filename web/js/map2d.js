@@ -1,7 +1,7 @@
 // FireSync 2D map: a flat (equirectangular) view of the same record, drawn on one canvas. It shares the
 // region layer, the hit-testing and the camera framing with the 3D globe, and only redraws when something
 // changes, so it is the light option for slow machines and phones.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import { fire } from './util.js';
 import { featPath, pickFeature } from './regions.js';
 

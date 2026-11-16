@@ -1,12 +1,12 @@
-// FireSync application wiring. Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// FireSync application wiring. Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import * as D from './data.js';
 import * as U from './util.js';
 import { Calendar } from './calendar.js';
 import { createView } from './view.js';
 import { mainBBox, pickFeature } from './regions.js';
 import { createCharts, drawSeasonal, drawAnnual, drawScatter, drawDrift } from './charts.js';
-import { I18N, tpl } from './i18n.js?v=20261115c';
-import { createPeriod } from './period.js?v=20261115c';
+import { I18N, tpl } from './i18n.js?v=20261116a';
+import { createPeriod } from './period.js?v=20261116a';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -51,8 +51,23 @@ async function boot() {
   calendar = new Calendar($('calendar'), { onSelect: t => selectMonth(t), onHover: showTip });
   charts = createCharts({ seasonal: $('chSeasonal'), annual: $('chAnnual'), scatter: $('chScatter'), drift: $('chDrift') });
   setupUI();
-  period = createPeriod({ state, L, values, baselineYears, selectMonth: t => selectMonth(t), areaSlug, toast, onChange: () => writeHash() });
+  period = createPeriod({ state, L, values, baselineYears, selectMonth: t => selectMonth(t), areaSlug, toast, onChange: () => writeHash(), lastComplete: () => lastCompleteT(state.series.n) });
   step(70, L().loading);
+  const h = state.pendingHash;
+  await applyPendingHash();
+  drawValidation();
+  step(100, L().ready);
+  if (h && h.v === '2d') setMapView('2d');
+  setTimeout(() => { $('intro').classList.add('done'); document.body.classList.add('ready'); }, 300);
+  stabilizeLayout();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(stabilizeLayout);
+  const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.06 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  setTimeout(() => { $('globeHint').style.opacity = '0'; }, 9000);
+}
+
+// Opens the area and month stored in the URL hash (on load, and when a FireSync link is pasted into an open tab).
+async function applyPendingHash() {
   const h = state.pendingHash;
   try {
     if (h && h.r) {
@@ -64,19 +79,20 @@ async function boot() {
       }
     }
     else if (h && h.p) await pickCircle(h.p[0], h.p[1], h.p[2], { t: h.t });
-    else if (h && h.c != null && countries.find(c => String(c.id) === String(h.c))) await pickCountry(countries.find(c => String(c.id) === String(h.c)), { t: h.t });
+    else if (h && h.c != null && state.countries.find(c => String(c.id) === String(h.c))) await pickCountry(state.countries.find(c => String(c.id) === String(h.c)), { t: h.t });
     else await pickWorld({ t: h && h.t });
   } catch (e) { console.error(e); await pickWorld({}); }
-  drawValidation();
-  step(100, L().ready);
-  if (h && h.v === '2d') setMapView('2d');
-  setTimeout(() => { $('intro').classList.add('done'); document.body.classList.add('ready'); }, 300);
-  stabilizeLayout();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(stabilizeLayout);
-  const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.06 });
-  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
-  setTimeout(() => { $('globeHint').style.opacity = '0'; }, 9000);
 }
+
+window.addEventListener('hashchange', async () => {
+  if (!state.series) return;
+  const lang = state.lang;
+  readHash();
+  state.lang = lang;
+  await applyPendingHash();
+  const v = state.pendingHash && state.pendingHash.v === '2d' ? '2d' : '3d';
+  if (state.map !== v) setMapView(v);
+});
 
 // ------------------------------------------------------------ areas of interest
 function beginAOI() { if (state.playing) stop(); }
@@ -425,7 +441,7 @@ function nearestCountry(lat, lon) {
 async function setSeries(s, t) {
   state.series = s;
   const last = s.n - 1;
-  state.t = t != null && t >= 0 && t <= last ? t : (state.t != null && state.t <= last ? state.t : last);
+  state.t = t != null && t >= 0 && t <= last ? t : (state.t != null && state.t <= last ? state.t : lastCompleteT(s.n));
   $('timeRange').max = last;
   renderAOIHead();
   await selectMonth(state.t, { instant: true });
@@ -482,15 +498,18 @@ async function selectMonth(t, { instant = false } = {}) {
   $('kpiRank').className = 'v ' + (st.rank <= 3 ? 'hot' : '');
   $('kpiRankSub').textContent = tpl(l.kRankSub, { n: st.nYears });
   const base = baselineYears().join('–');
+  // A month still being observed must not be called a record low: its counts are only a part of the month.
+  const partSel = partialInfo(), isPartial = !!(partSel && partSel.t === t);
   // The sentence in any language (the other ones are only measured, so the block keeps its height on a language switch).
   const sentence = g => {
     const k = I18N[g];
     if (!(st.val > 0)) return tpl(k.insightZero, { area: state.aoi.name, month: k.monthsLong[m], year: y, base, med: U.fmt(st.med, g) });
     let h = tpl(k.insight, {
       area: state.aoi.name, month: k.monthsLong[m], year: y, v: U.fmt(st.val, g), anom: isFinite(st.anom) ? U.pct(st.anom, g) : k.newActivity,
-      base, med: U.fmt(st.med, g), rank: st.rank, n: st.nYears, rec: st.isMax ? k.insightRec : st.isMin ? k.insightLow : '',
+      base, med: U.fmt(st.med, g), rank: st.rank, n: st.nYears, rec: isPartial ? '' : st.isMax ? k.insightRec : st.isMin ? k.insightLow : '',
     });
     if (U.isRecon(t) && state.view === 'harmonized') h += tpl(k.insightRecon, { sat: U.refSatOf(t), lo: U.fmt(st.lo, g), hi: U.fmt(st.hi, g) });
+    if (isPartial) h += tpl(k.insightPartial, { d: partSel.date });
     return h;
   };
   $('insight').innerHTML = sentence(state.lang) + '<span id="insightBurn"></span>';
@@ -931,6 +950,16 @@ function partialInfo() {
   return t === state.series.n - 1 && day < daysIn ? { t, date: d } : null;
 }
 
+// Latest month whose data covers the whole month. The app opens there, so the first screen never compares
+// half a month with full ones.
+function lastCompleteT(n) {
+  const d = state.meta && state.meta.lastDate;
+  if (!d || n < 2) return n - 1;
+  const [y, m, day] = d.split('-').map(Number);
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return U.tOf(y, m - 1) === n - 1 && day < daysIn ? n - 2 : n - 1;
+}
+
 function showTip(t, rect) {
   const tip = $('tooltip');
   if (t == null) { tip.classList.remove('show'); return; }
@@ -1038,7 +1067,8 @@ function writeHash() {
   parts.push(`t=${U.yearOf(state.t)}-${String(U.monthOf(state.t) + 1).padStart(2, '0')}`);
   const [ya, yb] = yearRange();
   if (state.series && (ya !== 2000 || yb !== U.yearOf(state.series.n - 1))) parts.push(`yr=${ya}-${yb}`);
-  if (state.series && state.pFrom != null && !(state.pTo === state.series.n - 1 && state.pFrom === Math.max(0, state.series.n - 12))) {
+  const pEnd = state.series ? lastCompleteT(state.series.n) : 0;
+  if (state.series && state.pFrom != null && !(state.pTo === pEnd && state.pFrom === Math.max(0, pEnd - 11))) {
     const ym = t => `${U.yearOf(t)}-${String(U.monthOf(t) + 1).padStart(2, '0')}`;
     parts.push(`pr=${ym(state.pFrom)}~${ym(state.pTo)}`);
   }
@@ -1181,7 +1211,7 @@ function setupUI() {
     fillYears();
     if (state.map !== '3d') setMapView('3d');
     if (state.pickMode !== 'region') { state.aoi = { kind: 'world' }; setPickMode('region'); }
-    pickWorld({ t: state.meta.months - 1 });
+    pickWorld({ t: lastCompleteT(state.meta.months) });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 

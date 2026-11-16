@@ -1,6 +1,6 @@
 # Cloudflare Pages response headers for FireSync (https://firesync.space).
 # Docs: https://developers.cloudflare.com/pages/configuration/headers/
-# Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md.
+# Developed with SI (Claude, Anthropic) assistance.
 
 /*
   X-Content-Type-Options: nosniff

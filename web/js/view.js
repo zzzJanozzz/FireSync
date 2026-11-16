@@ -1,6 +1,6 @@
 // FireSync map view: one interface over the 3D globe (default) and the 2D map. It remembers what is
 // on screen, so switching views replays the same regions, hotspots, outline and framing on the other one.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import { createGlobe } from './globe.js';
 import { createMap2D } from './map2d.js';
 

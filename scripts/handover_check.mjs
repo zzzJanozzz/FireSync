@@ -2,7 +2,7 @@
 // carries the record. The NOAA-20 -> Suomi NPP factors were fitted on 2018-2025. October 2026 is the one
 // full month in which both satellites are in the 2026 record, and it was never used in the fit, so it is
 // an out-of-sample test: NOAA-20 x factor should reproduce what Suomi NPP saw, country by country.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 //
 // Usage: node scripts/handover_check.mjs web/data
 import fs from 'node:fs';

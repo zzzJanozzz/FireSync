@@ -2,7 +2,7 @@
 // (gbOpen ADM2, ~180 countries), nested inside the Natural Earth provinces / states and joined to the
 // harmonized 0.25-degree cells. Output: one small file per province / state, so the app never has to
 // download a whole country's subdivisions (Brazil alone is 40 MB) at judging time.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 //
 // Usage:
 //   curl -sS -o data/raw/gb/all_adm2.json https://www.geoboundaries.org/api/current/gbOpen/ALL/ADM2/

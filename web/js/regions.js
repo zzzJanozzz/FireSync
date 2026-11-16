@@ -1,6 +1,6 @@
 // FireSync region helpers shared by the 3D globe and the 2D map: bounding boxes, hit-testing on the CPU
 // (no GPU ray-casting against thousands of meshes), canvas paths and camera framing.
-// Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 import { pointInGeom } from './data.js';
 
 export const polysOf = g => (!g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []);

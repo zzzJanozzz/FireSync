@@ -1,4 +1,4 @@
-// FireSync shared helpers. Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md. License: Apache-2.0
+// FireSync shared helpers. Developed with SI (Claude, Anthropic) assistance. License: Apache-2.0
 
 // Month index t: 0 = 2000-11 (first MODIS Terra month in FIRMS).
 export const T_AQUA = 20;    // 2002-07

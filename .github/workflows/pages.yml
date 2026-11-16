@@ -1,5 +1,5 @@
 # Publishes the static FireSync web app (web/) to GitHub Pages on every push to main.
-# Developed with SI (Claude, Anthropic) assistance. See AI_USAGE.md.
+# Developed with SI (Claude, Anthropic) assistance.
 name: Deploy FireSync to GitHub Pages
 
 on:
